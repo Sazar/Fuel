@@ -1,17 +1,40 @@
-# FuelApp
+# FuelApp — Prix carburants France
 
-Carte interactive des prix carburants en France.
+Application web de comparaison des prix carburants en France.
+
+## Structure du projet
+FuelApp/
+├── index.html
+├── css/
+│   └── style.css
+├── js/
+│   └── app.js
+└── README.md
+
 
 ## Fonctionnalités
-- Mode clair / sombre.
-- Filtre par carburant.
-- Top 3 national.
-- Top 3 autour de la position utilisateur.
-- Fiche détail d'une station.
-- Vue compte, communauté et admin en démo front.
 
-## Lancer le projet
-Ouvre le fichier `FuelApp.html` dans un navigateur ou via VS Code avec Live Server.
+- **Carte interactive** : visualiser les stations et leurs prix
+- **Top 3 France** : stations avec les meilleurs prix
+- **Top 3 local** : stations les moins chères près de vous
+- **Communauté** : commenter et proposer des corrections de prix
+- **Admin** : modération des commentaires et corrections
+- **Mode sombre/clair** : toggle avec icône soleil/lune
 
-## Source
-Projet personnel de comparaison des prix carburants en temps réel.
+## Utilisation
+
+1. Ouvrir `index.html` dans un navigateur
+2. Cliquer sur "🎭 Démo" pour charger des données de test
+3. Cliquer sur "📍 Ma position" pour voir les stations près de vous
+
+## Technologies
+
+- HTML5
+- CSS3 (avec variables CSS)
+- JavaScript (ES6+)
+- Leaflet (carte interactive)
+- OpenStreetMap (données de carte)
+
+## Auteur
+
+Sazar / FuelApp project

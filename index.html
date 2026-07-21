@@ -7,169 +7,7 @@
 <meta name="description" content="Application de comparaison des prix carburants en France."/>
 <link href="https://api.fontshare.com/v2/css?f[]=satoshi@400,500,700,900&f[]=cabinet-grotesk@500,700,800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin=""/>
-<style>
-:root,[data-theme="light"]{
-  --bg:#f4f2ec;--bg2:#ebe7de;--sur:#ffffff;--sur2:#f7f4ee;--sur3:#f0ebe2;
-  --bor:rgba(30,28,20,.09);--div:rgba(30,28,20,.08);
-  --tx0:#171613;--tx1:#5f5b50;--tx2:#9a968a;--txi:#fff;
-  --pri:#0b7f88;--prih:#08646b;--pris:rgba(11,127,136,.12);
-  --acc:#ea6a18;--acc2:#ff8a36;--accs:rgba(234,106,24,.12);
-  --ok:#2f8a26;--warn:#a56a00;--err:#b12444;
-  --shadow:0 10px 30px rgba(20,20,20,.08),0 2px 8px rgba(20,20,20,.04);
-  --shadow2:0 22px 60px rgba(0,0,0,.12),0 5px 18px rgba(0,0,0,.06);
-  --ring:0 0 0 3px rgba(11,127,136,.16);
-  --font:'Satoshi',system-ui,sans-serif;
-  --fdis:'Cabinet Grotesk',system-ui,sans-serif;
-  --sidebar-w:280px;
-  --topbar-h:70px;
-}
-[data-theme="dark"]{
-  --bg:#10110f;--bg2:#151714;--sur:#191b18;--sur2:#20221e;--sur3:#272a25;
-  --bor:rgba(255,255,255,.09);--div:rgba(255,255,255,.06);
-  --tx0:#efeada;--tx1:#a09b8e;--tx2:#666154;--txi:#0f110f;
-  --pri:#5bc7d1;--prih:#79dbe4;--pris:rgba(91,199,209,.14);
-  --acc:#ff8a3d;--acc2:#ffab62;--accs:rgba(255,138,61,.14);
-  --ok:#5fbf3b;--warn:#e3ac44;--err:#ef557a;
-  --shadow:0 10px 30px rgba(0,0,0,.28),0 2px 10px rgba(0,0,0,.18);
-  --shadow2:0 24px 70px rgba(0,0,0,.42),0 6px 22px rgba(0,0,0,.24);
-  --ring:0 0 0 3px rgba(91,199,209,.18);
-}
-*{box-sizing:border-box}
-html{scroll-behavior:smooth}
-body{margin:0;font-family:var(--font);background:linear-gradient(180deg,var(--bg),var(--bg2));color:var(--tx0);line-height:1.55;min-height:100dvh;overflow-x:hidden}
-button,input,select,textarea{font:inherit;color:inherit}
-button{cursor:pointer;border:none;background:none}
-a{text-decoration:none;color:inherit}
-::selection{background:var(--pris)}
-:focus-visible{outline:none;box-shadow:var(--ring);border-radius:12px}
-.shell{display:grid;grid-template-columns:var(--sidebar-w) 1fr;min-height:100dvh}
-.sidebar{position:sticky;top:0;height:100dvh;background:color-mix(in srgb,var(--sur) 94%,transparent);border-right:1px solid var(--bor);padding:1.15rem;display:flex;flex-direction:column;gap:1rem;backdrop-filter:blur(18px)}
-.brand{display:flex;align-items:center;gap:12px;padding:.2rem .2rem .7rem}
-.logo{width:50px;height:50px;border-radius:16px;background:linear-gradient(140deg,var(--pri),var(--acc));display:grid;place-items:center;font-family:var(--fdis);font-size:1.25rem;font-weight:900;color:#fff;box-shadow:var(--shadow)}
-.brand-name{font-family:var(--fdis);font-size:1.35rem;font-weight:900;line-height:1;letter-spacing:-.03em}
-.brand-tag{font-size:.7rem;color:var(--tx2);text-transform:uppercase;letter-spacing:.12em;margin-top:3px}
-.nav{display:flex;flex-direction:column;gap:6px;margin-top:.2rem}
-.nav-btn,.mob-btn{display:flex;align-items:center;gap:10px;padding:.88rem 1rem;border-radius:1rem;font-size:.9rem;font-weight:600;color:var(--tx1);transition:transform .18s,background .18s,color .18s}
-.nav-btn:hover,.mob-btn:hover{transform:translateY(-1px)}
-.nav-ico,.mico{width:34px;height:34px;border-radius:11px;display:grid;place-items:center;background:var(--sur2);flex-shrink:0}
-.nav-btn.active,.mob-btn.active{background:var(--pris);color:var(--pri)}
-.nav-btn.active .nav-ico,.mob-btn.active .mico{background:color-mix(in srgb,var(--pri) 16%,var(--sur2))}
-.sidebar-meta{margin-top:auto;display:flex;flex-direction:column;gap:.85rem}
-.themebar,.hint{background:var(--sur2);border:1px solid var(--bor);border-radius:1rem;padding:.9rem 1rem;box-shadow:var(--shadow)}
-.themebar{display:flex;align-items:center;justify-content:space-between;gap:.75rem}
-.theme-lbl{display:flex;align-items:center;gap:9px;font-size:.9rem;color:var(--tx1);font-weight:700}
-.ios-sw{position:relative;width:54px;height:32px;flex-shrink:0}
-.ios-sw input{position:absolute;opacity:0;width:0;height:0}
-.ios-track{position:absolute;inset:0;border-radius:999px;background:color-mix(in srgb,var(--tx2) 30%,var(--bor));transition:background .25s}
-.ios-sw input:checked+.ios-track{background:var(--pri)}
-.ios-knob{position:absolute;top:4px;left:4px;width:24px;height:24px;border-radius:50%;background:#fff;transition:transform .28s cubic-bezier(.34,1.56,.64,1)}
-.ios-sw input:checked~.ios-knob{transform:translateX(22px)}
-.hint{font-size:.84rem;color:var(--tx1);line-height:1.45}
-.main{padding:1.2rem;display:flex;flex-direction:column;gap:1.2rem;min-width:0}
-.topbar{position:sticky;top:0;z-index:20;background:color-mix(in srgb,var(--bg) 80%,transparent);backdrop-filter:blur(14px);border:1px solid var(--bor);border-radius:1.3rem;padding:.9rem 1rem;box-shadow:var(--shadow);display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap}
-.top-left{display:flex;align-items:center;gap:1rem;flex-wrap:wrap}
-.page-title{font-family:var(--fdis);font-size:clamp(1.45rem,2.4vw,2.2rem);font-weight:900;letter-spacing:-.035em;line-height:1.06;margin:0}
-.page-title .hl{color:var(--pri)}
-.page-sub{margin:.35rem 0 0;color:var(--tx1);max-width:72ch;font-size:.95rem}
-.top-right{display:flex;align-items:center;gap:.65rem;flex-wrap:wrap}
-.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:.82rem 1.1rem;border-radius:999px;font-size:.9rem;font-weight:800;border:1px solid var(--bor);background:var(--sur);color:var(--tx0);box-shadow:var(--shadow);white-space:nowrap}
-.btn:hover{transform:translateY(-1px)}
-.btn-pri{background:linear-gradient(135deg,var(--pri),var(--prih));color:#fff;border-color:transparent}
-.btn-acc{background:linear-gradient(135deg,var(--acc),var(--acc2));color:#fff;border-color:transparent}
-.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:1rem}
-.kpi,.card{background:var(--sur);border:1px solid var(--bor);border-radius:1.35rem;box-shadow:var(--shadow)}
-.kpi{padding:1.1rem 1.1rem 1rem;min-height:110px;display:flex;flex-direction:column;justify-content:space-between}
-.kpi-lbl{font-size:.7rem;text-transform:uppercase;letter-spacing:.11em;color:var(--tx2);font-weight:800}
-.kpi-val{font-family:var(--fdis);font-size:clamp(1.4rem,3vw,2.35rem);font-weight:900;line-height:1;margin-top:.4rem}
-.kpi-small{font-size:.82rem;color:var(--tx1);margin-top:.35rem}
-.view{display:none;flex-direction:column;gap:1rem}
-.view.active{display:flex}
-.grid-2{display:grid;grid-template-columns:minmax(0,1.7fr) minmax(330px,.95fr);gap:1rem;align-items:start}
-.card{padding:1rem}
-.card-head{display:flex;justify-content:space-between;align-items:center;gap:.75rem;margin-bottom:.8rem}
-.card-title{font-family:var(--fdis);font-size:1.15rem;font-weight:900;letter-spacing:-.02em}
-.badge{display:inline-flex;align-items:center;padding:.3rem .7rem;border-radius:999px;font-size:.72rem;font-weight:800;letter-spacing:.03em}
-.bg-pri{background:var(--pris);color:var(--pri)}
-.bg-acc{background:var(--accs);color:var(--acc)}
-.filters{display:grid;grid-template-columns:repeat(4,1fr);gap:.75rem;margin-bottom:1rem}
-.fld{display:flex;flex-direction:column;gap:.35rem}
-.fld label{font-size:.7rem;text-transform:uppercase;letter-spacing:.1em;color:var(--tx2);font-weight:800}
-.fld input,.fld select,.fld textarea{
-  width:100%;background:var(--sur2);border:1.5px solid var(--bor);border-radius:1rem;padding:.82rem .95rem;
-  color:var(--tx0);transition:border-color .2s,background .2s,box-shadow .2s
-}
-.fld textarea{min-height:120px;resize:vertical}
-.fld input:focus,.fld select:focus,.fld textarea:focus{box-shadow:var(--ring);border-color:color-mix(in srgb,var(--pri) 42%,var(--bor))}
-#map{height:62vh;min-height:320px;border-radius:1rem;border:1px solid var(--bor);overflow:hidden}
-.rank-list,.log-list{display:flex;flex-direction:column;gap:.65rem}
-.rank-item,.log-item,.queue-item{
-  background:var(--sur2);border:1px solid var(--bor);border-radius:1rem;padding:.8rem .85rem
-}
-.rank-item{display:flex;align-items:center;gap:.8rem}
-.rank-num{width:30px;height:30px;border-radius:999px;display:grid;place-items:center;color:#fff;font-family:var(--fdis);font-weight:900;flex-shrink:0}
-.r1{background:linear-gradient(135deg,#f59e0b,#d97706)}.r2{background:linear-gradient(135deg,#64748b,#94a3b8)}.r3{background:linear-gradient(135deg,#92400e,#d97706)}
-.rank-info{flex:1;min-width:0}
-.rank-name{font-weight:800;font-size:.92rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.rank-city{font-size:.76rem;color:var(--tx2);margin-top:2px}
-.rank-price{font-family:var(--fdis);font-size:1.12rem;font-weight:900;color:var(--pri)}
-.empty{display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:2.4rem 1.2rem;color:var(--tx1)}
-.empty h3{font-family:var(--fdis);font-size:1.05rem;margin-bottom:.3rem;color:var(--tx0)}
-.price-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.65rem}
-.price-chip{
-  padding:.75rem .85rem;background:var(--bg);border:1px solid var(--bor);border-radius:1rem
-}
-.price-chip.best{border-color:color-mix(in srgb,var(--ok) 50%,var(--bor))}
-.price-chip.worst{border-color:color-mix(in srgb,var(--err) 50%,var(--bor))}
-.price-chip .f-name{font-size:.68rem;color:var(--tx2);text-transform:uppercase;letter-spacing:.09em}
-.price-chip .f-val{font-family:var(--fdis);font-size:1.04rem;font-weight:900;margin-top:4px}
-.fuel-chip{display:inline-flex;align-items:center;padding:.32rem .75rem;border-radius:999px;font-size:.76rem;font-weight:800;border:1px solid}
-.fc-g{background:rgba(37,99,235,.1);color:#2563eb;border-color:rgba(37,99,235,.24)}
-.fc-95{background:rgba(22,163,74,.1);color:#16a34a;border-color:rgba(22,163,74,.24)}
-.fc-e10{background:rgba(5,150,105,.1);color:#059669;border-color:rgba(5,150,105,.24)}
-.fc-98{background:rgba(124,58,237,.1);color:#7c3aed;border-color:rgba(124,58,237,.24)}
-.fc-gpl{background:rgba(8,145,178,.1);color:#0891b2;border-color:rgba(8,145,178,.24)}
-.fc-e85{background:rgba(202,138,4,.1);color:#ca8a04;border-color:rgba(202,138,4,.24)}
-.form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.8rem}
-.form-grid .full{grid-column:1/-1}
-.uploader{
-  border:1.5px dashed color-mix(in srgb,var(--pri) 35%,var(--bor));
-  background:linear-gradient(180deg,color-mix(in srgb,var(--pri) 7%,var(--sur2)),var(--sur2));
-  border-radius:1.1rem;padding:1rem;display:flex;flex-direction:column;gap:.6rem
-}
-.uploader input{padding:.7rem}
-.preview{
-  display:none;gap:.75rem;align-items:center;padding:.75rem;border-radius:1rem;background:var(--bg);border:1px solid var(--bor)
-}
-.preview img{width:72px;height:72px;object-fit:cover;border-radius:.8rem;border:1px solid var(--bor)}
-.preview .meta{display:flex;flex-direction:column;gap:2px}
-.preview .meta b{font-size:.92rem}
-.preview .meta span{font-size:.78rem;color:var(--tx2)}
-.toast{position:fixed;bottom:1rem;left:50%;transform:translateX(-50%);background:var(--tx0);color:var(--txi);padding:.75rem 1rem;border-radius:999px;opacity:0;pointer-events:none;z-index:9999;box-shadow:var(--shadow2)}
-.mob-nav{display:none}
-@media (max-width:1100px){
-  .shell{grid-template-columns:1fr}
-  .sidebar{display:none}
-  .mob-nav{
-    display:grid;position:fixed;left:0;right:0;bottom:0;z-index:50;
-    grid-template-columns:repeat(4,1fr);gap:4px;padding:.55rem .75rem calc(.75rem + env(safe-area-inset-bottom));
-    background:color-mix(in srgb,var(--sur) 92%,transparent);border-top:1px solid var(--bor);backdrop-filter:blur(18px)
-  }
-  .main{padding:1rem 1rem calc(86px + env(safe-area-inset-bottom))}
-  .grid-2{grid-template-columns:1fr}
-  .filters,.kpis,.form-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
-  .topbar{position:relative}
-}
-@media (max-width:700px){
-  .kpis,.filters,.form-grid{grid-template-columns:1fr}
-  .kpi:last-child{min-height:unset}
-  .topbar{padding:.9rem}
-  .top-right,.top-left{width:100%}
-  .top-right .btn,.top-right .ios-sw{flex:1}
-  #map{height:56vh;min-height:280px}
-  .price-grid{grid-template-columns:1fr}
-  .btn{width:100%}
-}
-</style>
+<link rel="stylesheet" href="css/style.css"/>
 </head>
 <body>
 <div class="shell">
@@ -185,16 +23,24 @@ a{text-decoration:none;color:inherit}
       <button class="nav-btn active" data-view="mapView"><span class="nav-ico">🗺️</span><span>Carte & prix</span></button>
       <button class="nav-btn" data-view="authView"><span class="nav-ico">👤</span><span>Compte</span></button>
       <button class="nav-btn" data-view="communityView"><span class="nav-ico">💬</span><span>Communauté</span></button>
-      <button class="nav-btn" data-view="adminView"><span class="nav-ico">🛡️</span><span>Admin</span></button>
+      <button class="nav-btn" data-view="adminView" id="adminBtn">
+        <span class="nav-ico">🛡️</span>
+        <span class="nav-btn-right">
+          <span>Admin</span>
+          <span class="blob-err" id="adminBlob">0</span>
+        </span>
+      </button>
     </nav>
     <div class="sidebar-meta">
-      <div class="themebar">
-        <span class="theme-lbl"><span id="themeEmoji">☀️</span><span id="themeText">Mode clair</span></span>
+      <div class="themebar" title="Mode sombre/clair">
         <label class="ios-sw">
           <input type="checkbox" id="themeChk"/>
           <div class="ios-track"></div>
           <div class="ios-knob"></div>
         </label>
+        <button id="theme-toggle" title="Changer le thème">
+          <span class="icon">☀️</span>
+        </button>
       </div>
       <div class="hint">Astuce : cliquez une station sur la carte pour voir ses prix. Les contributions passent par la modération.</div>
     </div>
@@ -209,11 +55,6 @@ a{text-decoration:none;color:inherit}
         </div>
       </div>
       <div class="top-right">
-        <label class="ios-sw" title="Basculer le thème">
-          <input type="checkbox" id="themeChkTop"/>
-          <div class="ios-track"></div>
-          <div class="ios-knob"></div>
-        </label>
         <button class="btn btn-pri" id="locateBtn">📍 Ma position</button>
         <button class="btn btn-acc" id="seedBtn">🎭 Démo</button>
       </div>
@@ -222,7 +63,7 @@ a{text-decoration:none;color:inherit}
     <section class="view active" id="mapView">
       <div class="kpis">
         <div class="kpi"><div class="kpi-lbl">Stations</div><div class="kpi-val" id="stationCount">0</div><div class="kpi-small">dans la base affichée</div></div>
-        <div class="kpi"><div class="kpi-lbl">Dernière MAJ</div><div class="kpi-val" id="lastUpdateVal" style="font-size:1.05rem">—</div><div class="kpi-small">heure locale</div></div>
+        <div class="kpi"><div class="kpi-lbl">Dernière MAJ</div><div class="kpi-val" id="lastUpdateVal">—</div><div class="kpi-small">heure locale</div></div>
         <div class="kpi"><div class="kpi-lbl">En attente</div><div class="kpi-val" id="pendingCount">0</div><div class="kpi-small">modération</div></div>
         <div class="kpi"><div class="kpi-lbl">Commentaires</div><div class="kpi-val" id="commentCount">0</div><div class="kpi-small">validés</div></div>
       </div>
@@ -250,7 +91,7 @@ a{text-decoration:none;color:inherit}
           </div>
           <div class="card">
             <div class="card-head"><span class="card-title">Détail station</span></div>
-            <div id="stationDetails"><div class="empty"><h3>Choisissez une station</h3><p>Le détail s’affichera ici.</p></div></div>
+            <div id="stationDetails"><div class="empty"><h3>Choisissez une station</h3><p>Le détail s'affichera ici.</p></div></div>
           </div>
         </div>
       </div>
@@ -274,45 +115,47 @@ a{text-decoration:none;color:inherit}
     </section>
 
     <section class="view" id="communityView">
-      <div class="card">
-        <div class="card-head"><span class="card-title">💬 Commenter</span><span class="badge bg-pri">modération</span></div>
-        <form id="commentForm" class="form-grid">
-          <div class="fld"><label>Station</label><select id="commentStation"></select></div>
-          <div class="fld full"><label>Commentaire</label><textarea id="commentText" placeholder="Prix corrects ce matin…"></textarea></div>
-          <div class="uploader full">
-            <div class="fld"><label>Photo / preuve du prix</label><input id="commentPhoto" type="file" accept="image/*"/></div>
-            <div class="preview" id="commentPreview">
-              <img id="commentPreviewImg" alt="Aperçu de la photo"/>
-              <div class="meta">
-                <b id="commentPreviewName">Aucun fichier</b>
-                <span id="commentPreviewSize">Ajoutez une photo pour appuyer votre commentaire</span>
+      <div class="form-grid">
+        <div class="card">
+          <div class="card-head"><span class="card-title">💬 Commenter</span><span class="badge bg-pri">modération</span></div>
+          <form id="commentForm" class="form-grid" style="grid-template-columns:1fr">
+            <div class="fld"><label>Station</label><select id="commentStation"></select></div>
+            <div class="fld"><label>Commentaire</label><textarea id="commentText" placeholder="Prix corrects ce matin…"></textarea></div>
+            <div class="uploader">
+              <div class="fld"><label>Photo / preuve du prix</label><input id="commentPhoto" type="file" accept="image/*"/></div>
+              <div class="preview" id="commentPreview">
+                <img id="commentPreviewImg" alt="Aperçu de la photo"/>
+                <div class="meta">
+                  <b id="commentPreviewName">Aucun fichier</b>
+                  <span id="commentPreviewSize">Ajoutez une photo pour appuyer votre commentaire</span>
+                </div>
               </div>
+              <div style="font-size:.82rem;color:var(--tx1)">Ajoutez une photo de la pompe, du ticket ou de l'affichage pour faciliter la validation.</div>
             </div>
-            <div style="font-size:.82rem;color:var(--tx1)">Ajoutez une photo de la pompe, du ticket ou de l’affichage pour faciliter la validation.</div>
-          </div>
-          <button class="btn btn-pri full" type="submit">Envoyer en modération →</button>
-        </form>
-      </div>
+            <button class="btn btn-pri" type="submit">Envoyer en modération →</button>
+          </form>
+        </div>
 
-      <div class="card">
-        <div class="card-head"><span class="card-title">✏️ Corriger un prix</span><span class="badge bg-acc">preuve requise</span></div>
-        <form id="priceProposalForm" class="form-grid">
-          <div class="fld"><label>Station</label><select id="proposalStation"></select></div>
-          <div class="fld"><label>Carburant</label><select id="proposalFuel"></select></div>
-          <div class="fld"><label>Nouveau prix (€/L)</label><input id="proposalPrice" type="number" step="0.001" placeholder="1.739"/></div>
-          <div class="fld"><label>Justification</label><textarea id="proposalReason" placeholder="Constaté à la pompe…"></textarea></div>
-          <div class="uploader full">
-            <div class="fld"><label>Photo justificative</label><input id="proposalPhoto" type="file" accept="image/*"/></div>
-            <div class="preview" id="proposalPreview">
-              <img id="proposalPreviewImg" alt="Aperçu de la photo"/>
-              <div class="meta">
-                <b id="proposalPreviewName">Aucun fichier</b>
-                <span id="proposalPreviewSize">Joignez une preuve pour la correction</span>
+        <div class="card">
+          <div class="card-head"><span class="card-title">✏️ Corriger un prix</span><span class="badge bg-acc">preuve requise</span></div>
+          <form id="priceProposalForm" class="form-grid" style="grid-template-columns:1fr">
+            <div class="fld"><label>Station</label><select id="proposalStation"></select></div>
+            <div class="fld"><label>Carburant</label><select id="proposalFuel"></select></div>
+            <div class="fld"><label>Nouveau prix (€/L)</label><input id="proposalPrice" type="number" step="0.001" placeholder="1.739"/></div>
+            <div class="fld"><label>Justification</label><textarea id="proposalReason" placeholder="Constaté à la pompe…"></textarea></div>
+            <div class="uploader">
+              <div class="fld"><label>Photo justificative</label><input id="proposalPhoto" type="file" accept="image/*"/></div>
+              <div class="preview" id="proposalPreview">
+                <img id="proposalPreviewImg" alt="Aperçu de la photo"/>
+                <div class="meta">
+                  <b id="proposalPreviewName">Aucun fichier</b>
+                  <span id="proposalPreviewSize">Joignez une preuve pour la correction</span>
+                </div>
               </div>
             </div>
-          </div>
-          <button class="btn btn-pri full" type="submit">Proposer la correction →</button>
-        </form>
+            <button class="btn btn-pri" type="submit">Proposer la correction →</button>
+          </form>
+        </div>
       </div>
     </section>
 
@@ -333,124 +176,12 @@ a{text-decoration:none;color:inherit}
   <button class="mob-btn active" data-view="mapView"><span class="mico">🗺️</span><span>Carte</span></button>
   <button class="mob-btn" data-view="authView"><span class="mico">👤</span><span>Compte</span></button>
   <button class="mob-btn" data-view="communityView"><span class="mico">💬</span><span>Comm.</span></button>
-  <button class="mob-btn" data-view="adminView"><span class="mico">🛡️</span><span>Admin</span></button>
+  <button class="mob-btn" data-view="adminView" id="adminMobBtn"><span class="mico">🛡️</span><span>Admin</span><span class="blob-err" id="adminMobBlob">0</span></button>
 </nav>
 
 <div id="toast" class="toast"></div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
-<script>
-const FUELS=['Gazole','SP95','SP95-E10','SP98','GPLc','E85'];
-const FC={Gazole:'#2563eb',SP95:'#16a34a','SP95-E10':'#059669',SP98:'#7c3aed',GPLc:'#0891b2',E85:'#ca8a04'};
-const FCLS={Gazole:'fc-g',SP95:'fc-95','SP95-E10':'fc-e10',SP98:'fc-98',GPLc:'fc-gpl',E85:'fc-e85'};
-const DEMO=[
-{id:1,name:'TotalEnergies Rivoli',city:'Paris',lat:48.855,lng:2.357,addr:'12 Rue de Rivoli',prices:{Gazole:1.702,SP95:1.829,'SP95-E10':1.781,SP98:1.902,GPLc:0.992,E85:0.869}},
-{id:2,name:'E.Leclerc Frouard',city:'Frouard',lat:48.761,lng:6.132,addr:'Zone commerciale Grand Air',prices:{Gazole:1.621,SP95:1.748,'SP95-E10':1.709,SP98:1.832,GPLc:0.954,E85:0.792}},
-{id:3,name:'Carrefour Mérignac',city:'Mérignac',lat:44.842,lng:-0.667,addr:'Avenue de la Somme',prices:{Gazole:1.644,SP95:1.765,'SP95-E10':1.721,SP98:1.845,GPLc:0.979,E85:0.801}},
-{id:4,name:'Intermarché Brest',city:'Brest',lat:48.390,lng:-4.486,addr:'Bld de Plymouth',prices:{Gazole:1.633,SP95:1.759,'SP95-E10':1.714,SP98:1.838,GPLc:0.966,E85:0.795}},
-{id:5,name:'Avia Nice Ouest',city:'Nice',lat:43.665,lng:7.215,addr:'Route de Grenoble',prices:{Gazole:1.712,SP95:1.852,'SP95-E10':1.807,SP98:1.931,GPLc:1.005,E85:0.884}},
-{id:6,name:'Auchan Noyelles',city:'Noyelles-Godault',lat:50.417,lng:2.995,addr:'Centre commercial',prices:{Gazole:1.614,SP95:1.739,'SP95-E10':1.698,SP98:1.821,GPLc:0.949,E85:0.785}}
-];
-const S={user:null,fuel:'SP95-E10',pos:{lat:46.6,lng:1.88},stations:JSON.parse(JSON.stringify(DEMO)),comments:[],proposals:[],activity:[],selId:null,map:null,markers:[]};
-
-const toast=(m,d=2200)=>{const t=document.getElementById('toast');t.textContent=m;t.style.opacity=1;clearTimeout(t._x);t._x=setTimeout(()=>t.style.opacity=0,d)};
-const km=(a,b,c,d)=>{const R=6371,x=(c-a)*Math.PI/180,y=(d-b)*Math.PI/180,z=Math.sin(x/2)**2+Math.cos(a*Math.PI/180)*Math.cos(c*Math.PI/180)*Math.sin(y/2)**2;return +(2*R*Math.atan2(Math.sqrt(z),Math.sqrt(1-z))).toFixed(1)};
-const now=()=>new Date().toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'});
-
-function log(msg){S.activity.unshift({id:Date.now(),msg,at:now()});S.activity=S.activity.slice(0,20)}
-function hydrateSelects(){
-  const f=FUELS.map(x=>`<option value="${x}">${x}</option>`).join('');
-  ['fuelFilter','profileFuelSelect','proposalFuel'].forEach(id=>{const el=document.getElementById(id);if(el){el.innerHTML=f;el.value=S.fuel}});
-  const st=S.stations.map(s=>`<option value="${s.id}">${s.name} — ${s.city}</option>`).join('');
-  ['commentStation','proposalStation'].forEach(id=>{const el=document.getElementById(id);if(el)el.innerHTML=st});
-}
-function filtered(){
-  const f=document.getElementById('fuelFilter').value||S.fuel;
-  const q=(document.getElementById('searchFilter').value||'').toLowerCase();
-  const mx=parseFloat(document.getElementById('maxPriceFilter').value||'999');
-  const so=document.getElementById('sortFilter').value||'price';
-  return S.stations.filter(s=>s.prices[f]&&s.prices[f]<=mx&&(q?`${s.name} ${s.city} ${s.addr||''}`.toLowerCase().includes(q):true)).sort((a,b)=>so==='name'?a.name.localeCompare(b.name):so==='distance'?km(S.pos.lat,S.pos.lng,a.lat,a.lng)-km(S.pos.lat,S.pos.lng,b.lat,b.lng):a.prices[f]-b.prices[f]);
-}
-function icon(color){const svg=`<svg xmlns="http://www.w3.org/2000/svg" width="28" height="36" viewBox="0 0 28 36"><path d="M14 0C6.3 0 0 6.3 0 14c0 10.2 14 22 14 22s14-11.8 14-22C28 6.3 21.7 0 14 0z" fill="${color}"/><circle cx="14" cy="14" r="6" fill="white" opacity=".92"/></svg>`;return L.divIcon({html:svg,className:'',iconSize:[28,36],iconAnchor:[14,36],popupAnchor:[0,-36]})}
-function renderMap(){
-  if(!S.map){S.map=L.map('map').setView([46.6,1.88],6);L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'}).addTo(S.map)}
-  S.markers.forEach(m=>m.remove());S.markers=[];
-  const f=document.getElementById('fuelFilter').value||S.fuel;
-  filtered().slice(0,500).forEach(st=>{
-    const mk=L.marker([st.lat,st.lng],{icon:icon(FC[f]||'#0b7f88')}).addTo(S.map);
-    mk.bindPopup(`<strong>${st.name}</strong><br>${st.city}<br><b style="color:${FC[f]}">${st.prices[f].toFixed(3)} €/L</b>`);
-    mk.on('click',()=>{S.selId=st.id;renderDetail()});
-    S.markers.push(mk);
-  });
-}
-function rankItem(st,f,i,dist){
-  return `<div class="rank-item"><div class="rank-num ${['r1','r2','r3'][i]||'r3'}">${i+1}</div><div class="rank-info"><div class="rank-name">${st.name}</div><div class="rank-city">${st.city}${dist?` · ${dist} km`:''}</div></div><div class="rank-price">${st.prices[f].toFixed(3)} €</div></div>`
-}
-function renderRankings(){
-  const f=S.fuel;
-  document.getElementById('nFuelBadge').textContent=f;
-  document.getElementById('stationCount').textContent=S.stations.length;
-  document.getElementById('pendingCount').textContent=S.comments.filter(c=>c.status==='pending').length+S.proposals.filter(p=>p.status==='pending').length;
-  document.getElementById('commentCount').textContent=S.comments.filter(c=>c.status==='approved').length;
-  const arr=S.stations.filter(s=>s.prices[f]);
-  const nat=[...arr].sort((a,b)=>a.prices[f]-b.prices[f]).slice(0,3);
-  const near=[...arr].sort((a,b)=>km(S.pos.lat,S.pos.lng,a.lat,a.lng)-km(S.pos.lat,S.pos.lng,b.lat,b.lng)).slice(0,20).sort((a,b)=>a.prices[f]-b.prices[f]).slice(0,3);
-  document.getElementById('nationalTop').innerHTML=nat.map((s,i)=>rankItem(s,f,i,'')).join('')||'<div class="empty"><h3>Aucune station</h3><p>Chargez la démo.</p></div>';
-  document.getElementById('nearbyTop').innerHTML=near.map((s,i)=>rankItem(s,f,i,km(S.pos.lat,S.pos.lng,s.lat,s.lng))).join('')||'<div class="empty"><h3>GPS requis</h3><p>Activez votre position.</p></div>';
-}
-function renderDetail(){
-  const st=S.stations.find(s=>s.id===S.selId);
-  const box=document.getElementById('stationDetails');
-  if(!st){box.innerHTML='<div class="empty"><h3>Choisissez une station</h3><p>Le détail s’affichera ici.</p></div>';return}
-  const vals=FUELS.map(f=>st.prices[f]).filter(Boolean);
-  const min=Math.min(...vals), max=Math.max(...vals);
-  box.innerHTML=`<div style="margin-bottom:.8rem"><div style="font-family:var(--fdis);font-size:1.15rem;font-weight:900">${st.name}</div><div style="font-size:.88rem;color:var(--tx1)">${st.city}${st.addr?` · ${st.addr}`:''}</div></div><div class="price-grid">${FUELS.map(f=>st.prices[f]?`<div class="price-chip ${st.prices[f]===min?'best':st.prices[f]===max?'worst':''}"><div class="f-name">${f}</div><div class="f-val" style="color:${FC[f]}">${st.prices[f].toFixed(3)} €</div></div>`:'').join('')}</div>`;
-}
-function renderSession(){
-  const box=document.getElementById('sessionCard');
-  if(!S.user){box.innerHTML='<div class="empty"><h3>Invité</h3><p>Créez un compte pour commenter et proposer des corrections.</p></div>';return}
-  box.innerHTML=`<div class="log-item" style="display:flex;justify-content:space-between"><span>Prénom</span><b>${S.user.name}</b></div><div class="log-item" style="display:flex;justify-content:space-between"><span>Email</span><b>${S.user.email}</b></div><div class="log-item" style="display:flex;justify-content:space-between"><span>Carburant</span><span class="fuel-chip ${FCLS[S.user.fuel]}">${S.user.fuel}</span></div>`
-}
-function renderAdmin(){
-  const q=[...S.comments.filter(c=>c.status==='pending').map(c=>({type:'comment',...c})),...S.proposals.filter(p=>p.status==='pending').map(p=>({type:'proposal',...p}))].sort((a,b)=>b.at-a.at);
-  document.getElementById('queueCount').textContent=q.length;
-  document.getElementById('adminQueue').innerHTML=q.map(item=>{
-    const st=S.stations.find(s=>s.id===item.stId);
-    return `<div class="queue-item"><div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:.5rem"><span class="badge ${item.type==='comment'?'bg-pri':'bg-acc'}">${item.type==='comment'?'Commentaire':'Correction'}</span><span class="badge bg-acc">En attente</span></div><div style="font-weight:800;font-size:.92rem">${st?.name||'Station'} — ${st?.city||''}</div><div style="font-size:.78rem;color:var(--tx2);margin:.2rem 0 .55rem">Par <b>${item.author}</b></div><div style="background:var(--bg);border:1px solid var(--bor);border-radius:.9rem;padding:.65rem .75rem;font-size:.9rem;line-height:1.45">${item.type==='comment'?item.text:`<span class="fuel-chip ${FCLS[item.fuel]}">${item.fuel}</span> → <strong style="color:var(--ok)">${item.price.toFixed(3)} €/L</strong><div style="margin-top:.35rem;color:var(--tx1);font-size:.8rem">${item.reason}</div>`}</div><div style="display:flex;gap:.5rem;margin-top:.75rem;flex-wrap:wrap"><button class="btn btn-pri" style="padding:.55rem .85rem" onclick="approve('${item.type}',${item.id})">✓ Approuver</button><button class="btn" style="padding:.55rem .85rem" onclick="reject('${item.type}',${item.id})">✕ Refuser</button></div></div>`;
-  }).join('')||'<div class="empty"><h3>File vide</h3><p>Aucune contribution en attente.</p></div>';
-  document.getElementById('activityLog').innerHTML=S.activity.map(x=>`<div class="log-item" style="display:flex;justify-content:space-between;gap:.75rem"><div>${x.msg}</div><div style="color:var(--tx2);font-size:.72rem;white-space:nowrap">${x.at}</div></div>`).join('')||'<div class="empty"><h3>Aucune activité</h3><p>Les actions récentes apparaîtront ici.</p></div>';
-}
-function renderAll(){hydrateSelects();renderMap();renderRankings();renderDetail();renderSession();renderAdmin();document.getElementById('lastUpdateVal').textContent=now()}
-function approve(type,id){if(type==='comment'){const c=S.comments.find(x=>x.id===id);if(c)c.status='approved';log('✅ Commentaire approuvé')}else{const p=S.proposals.find(x=>x.id===id);if(p){p.status='approved';const st=S.stations.find(s=>s.id===p.stId);if(st)st.prices[p.fuel]=p.price;log('⛽ Prix mis à jour')}}renderAll();toast('Approuvé')}
-function reject(type,id){if(type==='comment'){const c=S.comments.find(x=>x.id===id);if(c)c.status='rejected'}else{const p=S.proposals.find(x=>x.id===id);if(p)p.status='rejected'}renderAll();toast('Refusé')}
-window.approve=approve;window.reject=reject;
-
-function view(id){document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));document.getElementById(id).classList.add('active');document.querySelectorAll('[data-view]').forEach(b=>b.classList.toggle('active',b.dataset.view===id));if(id==='mapView'&&S.map)setTimeout(()=>S.map.invalidateSize(),120)}
-document.querySelectorAll('[data-view]').forEach(b=>b.addEventListener('click',()=>view(b.dataset.view)));
-['fuelFilter','searchFilter','maxPriceFilter','sortFilter'].forEach(id=>document.getElementById(id).addEventListener('input',()=>{renderMap();renderDetail();if(id==='fuelFilter')renderRankings()}));
-
-document.getElementById('registerForm').addEventListener('submit',e=>{e.preventDefault();const fd=new FormData(e.target);S.user={name:fd.get('name'),email:fd.get('email'),fuel:fd.get('preferredFuel')};S.fuel=S.user.fuel;log(`👤 Compte créé : ${S.user.name}`);e.target.reset();toast(`Bienvenue, ${S.user.name} !`);renderAll()});
-document.getElementById('commentForm').addEventListener('submit',e=>{e.preventDefault();if(!S.user)return toast('Créez un compte d’abord.');const txt=document.getElementById('commentText').value.trim();if(!txt)return toast('Ajoutez un commentaire.');const file=document.getElementById('commentPhoto').files[0];S.comments.unshift({id:Date.now(),stId:+document.getElementById('commentStation').value,author:S.user.name,text:txt,status:'pending',photo:file?file.name:'',at:Date.now()});log(`💬 Commentaire soumis par ${S.user.name}`);document.getElementById('commentText').value='';document.getElementById('commentPhoto').value='';hidePreview('comment');renderAll();toast('Envoyé en modération')});
-document.getElementById('priceProposalForm').addEventListener('submit',e=>{e.preventDefault();if(!S.user)return toast('Créez un compte d’abord.');const pr=parseFloat(document.getElementById('proposalPrice').value);const re=document.getElementById('proposalReason').value.trim();if(!pr||!re)return toast('Complétez le formulaire.');const file=document.getElementById('proposalPhoto').files[0];S.proposals.unshift({id:Date.now(),stId:+document.getElementById('proposalStation').value,fuel:document.getElementById('proposalFuel').value,price:pr,reason:re,author:S.user.name,photo:file?file.name:'',status:'pending',at:Date.now()});log(`✏️ Correction proposée par ${S.user.name}`);e.target.reset();document.getElementById('proposalPhoto').value='';hidePreview('proposal');renderAll();toast('Proposition envoyée')});
-document.getElementById('locateBtn').addEventListener('click',()=>{if(!navigator.geolocation)return toast('Géolocalisation indisponible.');navigator.geolocation.getCurrentPosition(p=>{S.pos={lat:p.coords.latitude,lng:p.coords.longitude};if(S.map)S.map.setView([S.pos.lat,S.pos.lng],11);renderRankings();toast('Position détectée')},()=>toast('Position refusée'))});
-document.getElementById('seedBtn').addEventListener('click',()=>{S.stations=JSON.parse(JSON.stringify(DEMO));S.comments=[{id:1,stId:2,author:'Lucas',text:'Prix conformes ce matin.',status:'approved',at:Date.now()-3e5},{id:2,stId:1,author:'Nora',text:'Beaucoup de monde mais prix corrects.',status:'pending',at:Date.now()-1e5}];S.proposals=[{id:1,stId:6,fuel:'SP95-E10',price:1.689,reason:'Photo ticket 18h20.',author:'Mathis',photo:'ticket.jpg',status:'pending',at:Date.now()}];S.activity=[{id:1,msg:'🎭 Mode démo activé',at:now()}];renderAll();toast('Démo activée')});
-
-function preview(file,input,meta){
-  const wrap=document.getElementById(`${input}Preview`); if(!file){wrap.style.display='none';return}
-  document.getElementById(`${input}PreviewImg`).src=URL.createObjectURL(file);
-  document.getElementById(`${input}PreviewName`).textContent=file.name;
-  document.getElementById(`${input}PreviewSize`).textContent=`${(file.size/1024/1024).toFixed(2)} MB`;
-  wrap.style.display='flex';
-}
-function hidePreview(input){const wrap=document.getElementById(`${input}Preview`); if(wrap)wrap.style.display='none'}
-document.getElementById('commentPhoto').addEventListener('change',e=>preview(e.target.files[0],'comment'));
-document.getElementById('proposalPhoto').addEventListener('change',e=>preview(e.target.files[0],'proposal'));
-
-const themeInputs=[document.getElementById('themeChk'),document.getElementById('themeChkTop')];
-function setTheme(dark){document.documentElement.setAttribute('data-theme',dark?'dark':'light');themeInputs.forEach(x=>x.checked=dark);document.getElementById('themeEmoji').textContent=dark?'🌙':'☀️';document.getElementById('themeText').textContent=dark?'Mode sombre':'Mode clair';if(S.map)setTimeout(()=>S.map.invalidateSize(),120)}
-themeInputs.forEach(x=>x.addEventListener('change',()=>setTheme(x.checked)));
-setTheme(matchMedia('(prefers-color-scheme:dark)').matches);
-S.comments=[];S.proposals=[];S.activity=[];renderAll();
-</script>
+<script src="js/app.js"></script>
 </body>
 </html>
