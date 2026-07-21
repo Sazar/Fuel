@@ -260,6 +260,30 @@ function view(id){
   }
 }
 
+// Variables pour le thème
+const themeChk=document.getElementById('themeChk');
+const themeIcon=document.querySelector('.theme-icon');
+
+function setTheme(dark){
+  document.documentElement.setAttribute('data-theme',dark?'dark':'light');
+  themeChk.checked=dark;
+  
+  // Logo qui change dans le rond du toggle : soleil (clair) ou lune (sombre)
+  if(themeIcon){
+    themeIcon.textContent=dark?'🌙':'☀️';
+  }
+  
+  if(S.map)setTimeout(()=>S.map.invalidateSize(),120);
+  localStorage.setItem('theme',dark?'dark':'light');
+}
+
+themeChk.addEventListener('change',()=>setTheme(themeChk.checked));
+
+// Appliquer le thème par défaut
+const saved=localStorage.getItem('theme');
+const dark=saved==='dark'||(!saved&&window.matchMedia('(prefers-color-scheme:dark)').matches);
+setTheme(dark);
+
 // Initialization
 document.querySelectorAll('[data-view]').forEach(b=>{
   b.addEventListener('click',()=>view(b.dataset.view));
@@ -373,24 +397,6 @@ function hidePreview(input){
 
 document.getElementById('commentPhoto').addEventListener('change',e=>preview(e.target.files[0],'comment'));
 document.getElementById('proposalPhoto').addEventListener('change',e=>preview(e.target.files[0],'proposal'));
-
-const themeChk=document.getElementById('themeChk');
-const themeIcon=document.getElementById('theme-toggle').querySelector('.icon');
-
-function setTheme(dark){
-  document.documentElement.setAttribute('data-theme',dark?'dark':'light');
-  themeChk.checked=dark;
-  themeIcon.textContent=dark?'🌙':'☀️';
-  if(S.map)setTimeout(()=>S.map.invalidateSize(),120);
-  localStorage.setItem('theme',dark?'dark':'light');
-}
-
-themeChk.addEventListener('change',()=>setTheme(themeChk.checked));
-document.getElementById('theme-toggle').addEventListener('click',()=>setTheme(!themeChk.checked));
-
-const saved=localStorage.getItem('theme');
-const dark=saved==='dark'||(!saved&&window.matchMedia('(prefers-color-scheme:dark)').matches);
-setTheme(dark);
 
 S.comments=[];S.proposals=[];S.activity=[];
 renderAll();
