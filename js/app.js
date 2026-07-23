@@ -1,22 +1,19 @@
 /* =====================================================================
    FuelApp — app.js
-   Fix : badge stations persistant sur la carte + liste dans card
    ===================================================================== */
 
 const FUELS = ['Gazole', 'SP95', 'SP95-E10', 'SP98', 'GPLc', 'E85'];
 const FC    = { Gazole: '#2563eb', SP95: '#16a34a', 'SP95-E10': '#059669', SP98: '#7c3aed', GPLc: '#0891b2', E85: '#ca8a04' };
 const FCLS  = { Gazole: 'fc-g', SP95: 'fc-95', 'SP95-E10': 'fc-e10', SP98: 'fc-98', GPLc: 'fc-gpl', E85: 'fc-e85' };
 
-// —— API data.gouv.fr ————————————————————————————————————————————————
 const API_BASE  = 'https://data.economie.gouv.fr/api/explore/v2.1/catalog/datasets/prix-des-carburants-en-france-flux-instantane-v2/records';
 const NOMINATIM = 'https://nominatim.openstreetmap.org/search';
 
-/** Met à jour le badge persistant en haut de carte */
+/** Badge persistant en haut de carte — seul indicateur de statut stations */
 function setMapBadge(state, text) {
   const badge = document.getElementById('mapStationBadge');
-  const dot   = document.getElementById('msbDot');
   const label = document.getElementById('mapStationCount');
-  if (!badge || !dot || !label) return;
+  if (!badge || !label) return;
   badge.className = 'map-station-badge' + (state !== 'ok' ? ' ' + state : '');
   label.textContent = text;
 }
@@ -43,7 +40,7 @@ function mapApiStation(r) {
   };
 }
 
-async function fetchStationsAPI(lat, lng, radius = 50, silent = false) {
+async function fetchStationsAPI(lat, lng, radius = 50) {
   setMapBadge('loading', 'Chargement…');
   showSkeleton();
   try {
@@ -53,18 +50,16 @@ async function fetchStationsAPI(lat, lng, radius = 50, silent = false) {
     const data = await res.json();
     if (data.results && data.results.length) {
       S.stations = data.results.map(mapApiStation).filter(s => s.lat && s.lng);
-      setMapBadge('ok', `🟢 ${S.stations.length} stations live`);
+      setMapBadge('ok', `${S.stations.length} stations chargées`);
       renderAll();
-      if (!silent) toast(`📡 ${S.stations.length} stations chargées`);
       return;
     }
     throw new Error('Aucun résultat');
   } catch (e) {
     console.warn('[FuelApp] API indisponible →', e.message);
     S.stations = JSON.parse(JSON.stringify(DEMO));
-    setMapBadge('error', `🔴 Démo (${S.stations.length} stations)`);
+    setMapBadge('error', `Démo · ${S.stations.length} stations`);
     renderAll();
-    if (!silent) toast('⚠️ API indisponible — données démo');
   }
 }
 
@@ -76,15 +71,14 @@ async function geocodeAndLoad(query) {
     const url = `${NOMINATIM}?q=${encodeURIComponent(query)}&countrycodes=fr&format=json&limit=1`;
     const res = await fetch(url, { headers: { 'Accept-Language': 'fr' } });
     const results = await res.json();
-    if (!results.length) { setMapBadge('error', 'Ville introuvable'); toast('📍 Ville introuvable'); return; }
+    if (!results.length) { setMapBadge('error', 'Ville introuvable'); return; }
     const { lat, lon, display_name } = results[0];
     S.pos = { lat: parseFloat(lat), lng: parseFloat(lon) };
     renderUserPosition();
     toast(`📍 ${display_name.split(',')[0]}`);
-    await fetchStationsAPI(S.pos.lat, S.pos.lng, S.radius, true);
+    await fetchStationsAPI(S.pos.lat, S.pos.lng, S.radius);
   } catch (e) {
     setMapBadge('error', 'Erreur géocodage');
-    toast('❌ Erreur de géocodage');
   }
 }
 
@@ -102,12 +96,12 @@ function showSkeleton() {
 
 // —— Données démo ————————————————————————————————————————————————————
 const DEMO = [
-  { id:1, name:'TotalEnergies Rivoli', city:'Paris',           lat:48.855, lng: 2.357, addr:'12 Rue de Rivoli',        prices:{Gazole:1.702,SP95:1.829,'SP95-E10':1.781,SP98:1.902,GPLc:0.992,E85:0.869} },
-  { id:2, name:'E.Leclerc Frouard',   city:'Frouard',         lat:48.761, lng: 6.132, addr:'Zone commerciale',        prices:{Gazole:1.621,SP95:1.748,'SP95-E10':1.709,SP98:1.832,GPLc:0.954,E85:0.792} },
-  { id:3, name:'Carrefour Mérignac',  city:'Mérignac',        lat:44.842, lng:-0.667, addr:'Avenue de la Somme',      prices:{Gazole:1.644,SP95:1.765,'SP95-E10':1.721,SP98:1.845,GPLc:0.979,E85:0.801} },
-  { id:4, name:'Intermarché Brest',   city:'Brest',           lat:48.390, lng:-4.486, addr:'Bld de Plymouth',         prices:{Gazole:1.633,SP95:1.759,'SP95-E10':1.714,SP98:1.838,GPLc:0.966,E85:0.795} },
-  { id:5, name:'Avia Nice Ouest',     city:'Nice',            lat:43.665, lng: 7.215, addr:'Route de Grenoble',       prices:{Gazole:1.712,SP95:1.852,'SP95-E10':1.807,SP98:1.931,GPLc:1.005,E85:0.884} },
-  { id:6, name:'Auchan Noyelles',     city:'Noyelles-Godault',lat:50.417, lng: 2.995, addr:'Centre commercial',       prices:{Gazole:1.614,SP95:1.739,'SP95-E10':1.698,SP98:1.821,GPLc:0.949,E85:0.785} }
+  { id:1, name:'TotalEnergies Rivoli', city:'Paris',           lat:48.855, lng: 2.357, addr:'12 Rue de Rivoli',   prices:{Gazole:1.702,SP95:1.829,'SP95-E10':1.781,SP98:1.902,GPLc:0.992,E85:0.869} },
+  { id:2, name:'E.Leclerc Frouard',   city:'Frouard',         lat:48.761, lng: 6.132, addr:'Zone commerciale',   prices:{Gazole:1.621,SP95:1.748,'SP95-E10':1.709,SP98:1.832,GPLc:0.954,E85:0.792} },
+  { id:3, name:'Carrefour Mérignac',  city:'Mérignac',        lat:44.842, lng:-0.667, addr:'Avenue de la Somme', prices:{Gazole:1.644,SP95:1.765,'SP95-E10':1.721,SP98:1.845,GPLc:0.979,E85:0.801} },
+  { id:4, name:'Intermarché Brest',   city:'Brest',           lat:48.390, lng:-4.486, addr:'Bld de Plymouth',    prices:{Gazole:1.633,SP95:1.759,'SP95-E10':1.714,SP98:1.838,GPLc:0.966,E85:0.795} },
+  { id:5, name:'Avia Nice Ouest',     city:'Nice',            lat:43.665, lng: 7.215, addr:'Route de Grenoble',  prices:{Gazole:1.712,SP95:1.852,'SP95-E10':1.807,SP98:1.931,GPLc:1.005,E85:0.884} },
+  { id:6, name:'Auchan Noyelles',     city:'Noyelles-Godault',lat:50.417, lng: 2.995, addr:'Centre commercial',  prices:{Gazole:1.614,SP95:1.739,'SP95-E10':1.698,SP98:1.821,GPLc:0.949,E85:0.785} }
 ];
 
 // —— État global ——————————————————————————————————————————————————————
@@ -409,7 +403,7 @@ function reject(type,id){
 }
 window.approve=approve; window.reject=reject;
 
-// —— Navigation View Transitions ————————————————————————————————————
+// —— Navigation ———————————————————————————————————————————————————————
 function viewTransition(id){
   const doSwitch=()=>{
     document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
@@ -467,12 +461,11 @@ if(locateBtn){
     if(!navigator.geolocation) return toast('⚠️ Géolocalisation indisponible.');
     if(S.watchId) navigator.geolocation.clearWatch(S.watchId);
     setMapBadge('loading','Localisation…');
-    toast('📍 Localisation en cours…');
     S.watchId=navigator.geolocation.watchPosition(
       pos=>{
         S.pos={lat:pos.coords.latitude,lng:pos.coords.longitude};
         renderUserPosition();
-        fetchStationsAPI(S.pos.lat,S.pos.lng,S.radius,true);
+        fetchStationsAPI(S.pos.lat,S.pos.lng,S.radius);
       },
       ()=>{
         const list=document.getElementById('stationList');
@@ -483,7 +476,6 @@ if(locateBtn){
           <button class="btn btn-pri" style="margin-top:.75rem" onclick="openCitySearch()">🏙️ Chercher une ville</button>
         </div>`;
         setMapBadge('error','Position refusée');
-        toast('📵 Position refusée — entrez une ville');
       },
       {enableHighAccuracy:true,timeout:10000,maximumAge:30000}
     );
@@ -542,7 +534,7 @@ if(seedBtn) seedBtn.addEventListener('click',()=>{
   S.comments=[{id:1,stId:2,author:'Lucas',text:'Prix conformes ce matin.',status:'approved',at:Date.now()-3e5},{id:2,stId:1,author:'Nora',text:'Beaucoup de monde.',status:'pending',at:Date.now()-1e5}];
   S.proposals=[{id:1,stId:6,fuel:'SP95-E10',price:1.689,reason:'Photo ticket.',author:'Mathis',photo:'ticket.jpg',status:'pending',at:Date.now()}];
   S.activity=[{id:1,msg:'🎭 Mode démo activé',at:now()}];
-  setMapBadge('ok',`🟢 ${S.stations.length} stations démo`);
+  setMapBadge('ok',`${S.stations.length} stations démo`);
   renderAll(); toast('🎭 Démo activée');
 });
 
