@@ -59,11 +59,9 @@
   </header>
 
   <main class="layout">
-    <!-- ===== PANNEAU GAUCHE / BOTTOM SHEET MOBILE ===== -->
     <aside class="station-panel" id="stationPanel">
       <div class="drag-handle" id="dragHandle"></div>
 
-      <!-- Card unique : recherche + filtres + liste stations -->
       <section class="card search-shell">
         <div class="search-top">
           <button class="city-pill" id="cityBtn" type="button">
@@ -95,7 +93,6 @@
           </button>
         </div>
 
-        <!-- Filtres carburant avec prix moyen dynamique -->
         <div class="fuel-pills" id="fuelPills">
           <button class="fuel-pill active" data-fuel="Gazole">Gazole<span class="pill-avg" id="avg-Gazole"></span></button>
           <button class="fuel-pill" data-fuel="SP95-E10">E10<span class="pill-avg" id="avg-SP95-E10"></span></button>
@@ -113,15 +110,12 @@
           <div class="mini-best" id="bestPriceMini">— min</div>
         </div>
 
-        <!-- Liste des stations DANS la même card -->
         <div class="stations-divider"></div>
         <div id="stationList"></div>
       </section>
 
-      <!-- Fiche détail station -->
       <div id="stationDetails"></div>
 
-      <!-- Vue Compte -->
       <section class="view" id="authView">
         <div class="card">
           <div class="card-head"><span class="card-title">Créer un compte</span><span class="badge bg-pri">profil</span></div>
@@ -139,7 +133,6 @@
         </div>
       </section>
 
-      <!-- Vue Communauté -->
       <section class="view" id="communityView">
         <div class="card">
           <div class="card-head"><span class="card-title">💬 Commenter</span><span class="badge bg-pri">modération</span></div>
@@ -163,11 +156,8 @@
     <section class="map-panel" id="mapPanel">
       <div id="map"></div>
 
-      <!-- Badge stations persistant centré en haut de carte -->
-      <div class="map-station-badge" id="mapStationBadge">
-        <span class="msb-dot" id="msbDot"></span>
-        <span id="mapStationCount">Chargement…</span>
-      </div>
+      <!-- Pilule persistante en haut au centre de la carte -->
+      <div id="toast" class="toast-badge">Chargement…</div>
 
       <button class="map-close-detail" id="closeDetail" style="display:none" title="Fermer la fiche">&times;</button>
     </section>
@@ -185,8 +175,6 @@
     </section>
   </main>
 </div>
-
-<!-- #toast supprimé — les notifications passent par le badge carte -->
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
 <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js" crossorigin=""></script>
