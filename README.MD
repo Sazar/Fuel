@@ -15,8 +15,6 @@ FuelApp/
 ## Fonctionnalités
 
 - **Carte interactive** : visualiser les stations et leurs prix
-- **Top 3 France** : stations avec les meilleurs prix
-- **Top 3 local** : stations les moins chères près de vous
 - **Communauté** : commenter et proposer des corrections de prix
 - **Admin** : modération des commentaires et corrections
 - **Mode sombre/clair** : toggle avec icône soleil/lune
