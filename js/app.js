@@ -477,29 +477,32 @@ if(aroundBtn&&aroundMenu) aroundBtn.addEventListener('click',()=>{aroundMenu.sty
 const radiusRange=document.getElementById('radiusRange'), radiusVal=document.getElementById('radiusVal');
 if(radiusRange&&radiusVal) radiusRange.addEventListener('input',()=>{S.radius=+radiusRange.value;radiusVal.textContent=S.radius;renderMap();renderStationList();});
 
-const locateBtn=document.getElementById('locateBtn');
-if(locateBtn){
-  locateBtn.addEventListener('click',()=>{
-    if(!navigator.geolocation) return setMapBadge('error','Géoloc indisponible');
-    if(S.watchId) navigator.geolocation.clearWatch(S.watchId);
-    setMapBadge('loading','Localisation…');
-    S.watchId=navigator.geolocation.watchPosition(
-      pos=>{
-        S.pos={lat:pos.coords.latitude,lng:pos.coords.longitude};
+const locateBtn = document.getElementById('locateBtn');
+if (locateBtn) {
+  locateBtn.addEventListener('click', () => {
+    if (!navigator.geolocation) return setMapBadge('error', 'Géoloc indisponible');
+
+    setMapBadge('loading', 'Localisation…');
+
+    navigator.geolocation.getCurrentPosition(
+      pos => {
+        S.pos = { lat: pos.coords.latitude, lng: pos.coords.longitude };
         renderUserPosition();
-        fetchStationsAPI(S.pos.lat,S.pos.lng,S.radius);
+        fetchStationsAPI(S.pos.lat, S.pos.lng, S.radius);
       },
-      ()=>{
-        const list=document.getElementById('stationList');
-        if(list) list.innerHTML=`<div class="empty">
-          <div style="font-size:2rem;margin-bottom:.5rem">📵</div>
-          <h3>Localisation refusée</h3>
-          <p>Autorisez la géolocalisation ou recherchez une ville.</p>
-          <button class="btn btn-pri" style="margin-top:.75rem" onclick="openCitySearch()">🏙️ Chercher une ville</button>
-        </div>`;
-        setMapBadge('error','Position refusée');
+      () => {
+        const list = document.getElementById('stationList');
+        if (list) {
+          list.innerHTML = `<div class="empty">
+            <div style="font-size:2rem;margin-bottom:.5rem">📵</div>
+            <h3>Localisation refusée</h3>
+            <p>Autorisez la géolocalisation ou recherchez une ville.</p>
+            <button class="btn btn-pri" style="margin-top:.75rem" onclick="openCitySearch()">🏙️ Chercher une ville</button>
+          </div>`;
+        }
+        setMapBadge('error', 'Position refusée');
       },
-      {enableHighAccuracy:true,timeout:10000,maximumAge:30000}
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 30000 }
     );
   });
 }
