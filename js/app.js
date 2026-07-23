@@ -1,478 +1,714 @@
-const FUELS=['Gazole','SP95','SP95-E10','SP98','GPLc','E85'];
-const FC={Gazole:'#2563eb',SP95:'#16a34a','SP95-E10':'#059669',SP98:'#7c3aed',GPLc:'#0891b2',E85:'#ca8a04'};
-const FCLS={Gazole:'fc-g',SP95:'fc-95','SP95-E10':'fc-e10',SP98:'fc-98',GPLc:'fc-gpl',E85:'fc-e85'};
+/* =====================================================================
+   FuelApp — app.js
+   Améliorations : API data.gouv.fr, MarkerCluster, markers prix,
+   bottom sheet mobile drag, stationList/Details complets,
+   itinéraire GPS, prix moyens pills, View Transitions API
+   ===================================================================== */
 
-const DEMO=[
-{id:1,name:'TotalEnergies Rivoli',city:'Paris',lat:48.855,lng:2.357,addr:'12 Rue de Rivoli',prices:{Gazole:1.702,SP95:1.829,'SP95-E10':1.781,SP98:1.902,GPLc:0.992,E85:0.869}},
-{id:2,name:'E.Leclerc Frouard',city:'Frouard',lat:48.761,lng:6.132,addr:'Zone commerciale Grand Air',prices:{Gazole:1.621,SP95:1.748,'SP95-E10':1.709,SP98:1.832,GPLc:0.954,E85:0.792}},
-{id:3,name:'Carrefour Mérignac',city:'Mérignac',lat:44.842,lng:-0.667,addr:'Avenue de la Somme',prices:{Gazole:1.644,SP95:1.765,'SP95-E10':1.721,SP98:1.845,GPLc:0.979,E85:0.801}},
-{id:4,name:'Intermarché Brest',city:'Brest',lat:48.390,lng:-4.486,addr:'Bld de Plymouth',prices:{Gazole:1.633,SP95:1.759,'SP95-E10':1.714,SP98:1.838,GPLc:0.966,E85:0.795}},
-{id:5,name:'Avia Nice Ouest',city:'Nice',lat:43.665,lng:7.215,addr:'Route de Grenoble',prices:{Gazole:1.712,SP95:1.852,'SP95-E10':1.807,SP98:1.931,GPLc:1.005,E85:0.884}},
-{id:6,name:'Auchan Noyelles',city:'Noyelles-Godault',lat:50.417,lng:2.995,addr:'Centre commercial',prices:{Gazole:1.614,SP95:1.739,'SP95-E10':1.698,SP98:1.821,GPLc:0.949,E85:0.785}}
+const FUELS = ['Gazole', 'SP95', 'SP95-E10', 'SP98', 'GPLc', 'E85'];
+const FC = { Gazole: '#2563eb', SP95: '#16a34a', 'SP95-E10': '#059669', SP98: '#7c3aed', GPLc: '#0891b2', E85: '#ca8a04' };
+const FCLS = { Gazole: 'fc-g', SP95: 'fc-95', 'SP95-E10': 'fc-e10', SP98: 'fc-98', GPLc: 'fc-gpl', E85: 'fc-e85' };
+
+// ── API data.gouv.fr ──────────────────────────────────────────────────
+const API_BASE = 'https://data.economie.gouv.fr/api/explore/v2.1/catalog/datasets/prix-des-carburants-en-france-flux-instantane-v2/records';
+
+function mapApiStation(r) {
+  return {
+    id: r.id || r.id_station || String(Math.random()),
+    name: r.nom || r.Nom || 'Station',
+    city: r.ville || r.Ville || '',
+    addr: r.adresse || r.Adresse || '',
+    lat: parseFloat(r.latitude || (r.geom && r.geom.lat) || 0),
+    lng: parseFloat(r.longitude || (r.geom && r.geom.lon) || 0),
+    prices: {
+      Gazole:    parseFloat(r.gazole_prix)    || null,
+      SP95:      parseFloat(r.sp95_prix)      || null,
+      'SP95-E10':parseFloat(r.e10_prix)       || null,
+      SP98:      parseFloat(r.sp98_prix)      || null,
+      GPLc:      parseFloat(r.gplc_prix)      || null,
+      E85:       parseFloat(r.e85_prix)       || null
+    }
+  };
+}
+
+async function fetchStationsAPI(lat, lng, radius = 10) {
+  const badge = document.getElementById('apiBadge');
+  if (badge) { badge.textContent = '🟡 Chargement…'; badge.className = 'api-badge loading'; }
+  try {
+    const url = `${API_BASE}?where=distance(geom,geom'POINT(${lng}%20${lat})',${radius}km)&limit=100`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error('API error');
+    const data = await res.json();
+    if (data.results && data.results.length) {
+      S.stations = data.results.map(mapApiStation).filter(s => s.lat && s.lng);
+      if (badge) { badge.textContent = `🟢 Live · ${S.stations.length} stations`; badge.className = 'api-badge'; }
+      renderAll();
+      toast(`${S.stations.length} stations chargées`);
+      return;
+    }
+    throw new Error('empty');
+  } catch (e) {
+    console.warn('API indisponible, données démo utilisées.', e);
+    if (badge) { badge.textContent = '🔴 Démo'; badge.className = 'api-badge error'; }
+    S.stations = JSON.parse(JSON.stringify(DEMO));
+    renderAll();
+  }
+}
+
+// ── Données démo fallback ─────────────────────────────────────────────
+const DEMO = [
+  { id: 1, name: 'TotalEnergies Rivoli',    city: 'Paris',            lat: 48.855, lng:  2.357, addr: '12 Rue de Rivoli',         prices: { Gazole: 1.702, SP95: 1.829, 'SP95-E10': 1.781, SP98: 1.902, GPLc: 0.992, E85: 0.869 } },
+  { id: 2, name: 'E.Leclerc Frouard',       city: 'Frouard',          lat: 48.761, lng:  6.132, addr: 'Zone commerciale Grand Air', prices: { Gazole: 1.621, SP95: 1.748, 'SP95-E10': 1.709, SP98: 1.832, GPLc: 0.954, E85: 0.792 } },
+  { id: 3, name: 'Carrefour Mérignac',      city: 'Mérignac',         lat: 44.842, lng: -0.667, addr: 'Avenue de la Somme',        prices: { Gazole: 1.644, SP95: 1.765, 'SP95-E10': 1.721, SP98: 1.845, GPLc: 0.979, E85: 0.801 } },
+  { id: 4, name: 'Intermarché Brest',       city: 'Brest',            lat: 48.390, lng: -4.486, addr: 'Bld de Plymouth',           prices: { Gazole: 1.633, SP95: 1.759, 'SP95-E10': 1.714, SP98: 1.838, GPLc: 0.966, E85: 0.795 } },
+  { id: 5, name: 'Avia Nice Ouest',         city: 'Nice',             lat: 43.665, lng:  7.215, addr: 'Route de Grenoble',         prices: { Gazole: 1.712, SP95: 1.852, 'SP95-E10': 1.807, SP98: 1.931, GPLc: 1.005, E85: 0.884 } },
+  { id: 6, name: 'Auchan Noyelles',         city: 'Noyelles-Godault', lat: 50.417, lng:  2.995, addr: 'Centre commercial',         prices: { Gazole: 1.614, SP95: 1.739, 'SP95-E10': 1.698, SP98: 1.821, GPLc: 0.949, E85: 0.785 } }
 ];
 
-const S={
-  user:null,
-  fuel:'SP95-E10',
-  pos:{lat:46.6,lng:1.88},
-  radius:10,
-  stations:JSON.parse(JSON.stringify(DEMO)),
-  comments:[],
-  proposals:[],
-  activity:[],
-  selId:null,
-  map:null,
-  markers:[],
-  userDot:null,
-  userAccuracy:null
+// ── État global ───────────────────────────────────────────────────────
+const S = {
+  user: null,
+  fuel: 'SP95-E10',
+  statusFilter: 'all',
+  pos: { lat: 46.6, lng: 1.88 },
+  radius: 10,
+  stations: JSON.parse(JSON.stringify(DEMO)),
+  comments: [],
+  proposals: [],
+  activity: [],
+  selId: null,
+  map: null,
+  clusterGroup: null,
+  markers: [],
+  userDot: null,
+  watchId: null
 };
 
-const toast=(m,d=2200)=>{
-  const t=document.getElementById('toast');
-  if(!t)return;
-  t.textContent=m;
-  t.style.opacity=1;
+// ── Utilitaires ───────────────────────────────────────────────────────
+const toast = (m, d = 2200) => {
+  const t = document.getElementById('toast');
+  if (!t) return;
+  t.textContent = m;
+  t.style.opacity = 1;
   clearTimeout(t._x);
-  t._x=setTimeout(()=>t.style.opacity=0,d);
+  t._x = setTimeout(() => t.style.opacity = 0, d);
 };
 
-const now=()=>new Date().toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'});
+const now = () => new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
 
-const km=(a,b,c,d)=>{
-  const R=6371;
-  const x=(c-a)*Math.PI/180;
-  const y=(d-b)*Math.PI/180;
-  const z=Math.sin(x/2)**2+Math.cos(a*Math.PI/180)*Math.cos(c*Math.PI/180)*Math.sin(y/2)**2;
-  return +(2*R*Math.atan2(Math.sqrt(z),Math.sqrt(1-z))).toFixed(1);
+const km = (a, b, c, d) => {
+  const R = 6371;
+  const x = (c - a) * Math.PI / 180;
+  const y = (d - b) * Math.PI / 180;
+  const z = Math.sin(x / 2) ** 2 + Math.cos(a * Math.PI / 180) * Math.cos(c * Math.PI / 180) * Math.sin(y / 2) ** 2;
+  return +(2 * R * Math.atan2(Math.sqrt(z), Math.sqrt(1 - z))).toFixed(1);
 };
 
-function hydrateSelects(){
-  const f=FUELS.map(x=>`<option value="${x}">${x}</option>`).join('');
-  const el=document.getElementById('profileFuelSelect');
-  if(el){
-    el.innerHTML=f;
-    el.value=S.fuel;
-  }
-
-  const st=S.stations.map(s=>`<option value="${s.id}">${s.name} — ${s.city}</option>`).join('');
-  const c=document.getElementById('commentStation');
-  if(c)c.innerHTML=st;
+// ── Icônes carte ──────────────────────────────────────────────────────
+function userIcon() {
+  return L.divIcon({
+    className: 'location-marker',
+    html: '<div class="location-dot"></div>',
+    iconSize: [16, 16],
+    iconAnchor: [8, 8]
+  });
 }
 
-function filtered(){
-  const f=S.fuel;
-  const q=(document.getElementById('searchFilter')?.value||'').toLowerCase();
-  const mx=parseFloat(document.getElementById('maxPriceFilter')?.value||'999');
-  const so=document.getElementById('sortFilter')?.value||'price';
+/**
+ * Marker avec prix affiché directement (style AlertFuel)
+ */
+function stationIcon(price, color, isBest = false) {
+  return L.divIcon({
+    html: `<div class="map-pin${isBest ? ' map-pin--best' : ''}" style="--pin-color:${color}">
+      <span class="pin-price">${price !== null ? price.toFixed(2) : '—'}</span>
+      <span class="pin-unit">€</span>
+    </div>`,
+    className: '',
+    iconSize: [58, 30],
+    iconAnchor: [29, 30],
+    popupAnchor: [0, -34]
+  });
+}
 
-  return S.stations.filter(s=>{
-    if(!s.prices[f]||s.prices[f]>mx)return false;
-    if(q&&!`${s.name} ${s.city} ${s.addr||''}`.toLowerCase().includes(q))return false;
-    if(S.radius){
-      const d=km(S.pos.lat,S.pos.lng,s.lat,s.lng);
-      if(d>S.radius)return false;
+// ── Filtrage ──────────────────────────────────────────────────────────
+function filtered() {
+  const f = S.fuel;
+  const items = S.stations.filter(s => {
+    if (!s.prices[f]) return false;
+    if (S.radius) {
+      const d = km(S.pos.lat, S.pos.lng, s.lat, s.lng);
+      if (d > S.radius) return false;
     }
     return true;
-  }).sort((a,b)=>{
-    if(so==='name')return a.name.localeCompare(b.name);
-    if(so==='distance')return km(S.pos.lat,S.pos.lng,a.lat,a.lng)-km(S.pos.lat,S.pos.lng,b.lat,b.lng);
-    return a.prices[f]-b.prices[f];
-  });
+  }).sort((a, b) => a.prices[f] - b.prices[f]);
+
+  // Filtre statut (moins cher / moyen / plus cher)
+  if (S.statusFilter !== 'all' && items.length > 1) {
+    const prices = items.map(s => s.prices[f]);
+    const mn = Math.min(...prices);
+    const mx = Math.max(...prices);
+    const third = (mx - mn) / 3;
+    return items.filter(s => {
+      const p = s.prices[f];
+      if (S.statusFilter === 'cheaper') return p <= mn + third;
+      if (S.statusFilter === 'higher')  return p >= mx - third;
+      if (S.statusFilter === 'mid')     return p > mn + third && p < mx - third;
+      return true;
+    });
+  }
+  return items;
 }
 
-function ensureMap(){
-  if(!S.map){
-    S.map=L.map('map').setView([46.6,1.88],6);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
-      maxZoom:19,
-      attribution:'© OpenStreetMap'
+// ── Carte ─────────────────────────────────────────────────────────────
+function ensureMap() {
+  if (!S.map) {
+    S.map = L.map('map').setView([46.6, 1.88], 6);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '© <a href="https://openstreetmap.org">OpenStreetMap</a>'
     }).addTo(S.map);
+    // Groupe de clustering
+    S.clusterGroup = L.markerClusterGroup({
+      maxClusterRadius: 50,
+      spiderfyOnMaxZoom: true,
+      showCoverageOnHover: false,
+      iconCreateFunction: cluster => {
+        const count = cluster.getChildCount();
+        return L.divIcon({
+          html: `<div class="cluster-icon">${count}</div>`,
+          className: '',
+          iconSize: [40, 40]
+        });
+      }
+    });
+    S.map.addLayer(S.clusterGroup);
   }
 }
 
-function userIcon(){
-  return L.divIcon({
-    className:'location-marker',
-    html:'<div class="location-dot"></div>',
-    iconSize:[16,16],
-    iconAnchor:[8,8]
-  });
-}
-
-function stationIcon(color){
-  return L.divIcon({
-    html:`<svg xmlns="http://www.w3.org/2000/svg" width="28" height="36" viewBox="0 0 28 36"><path d="M14 0C6.3 0 0 6.3 0 14c0 10.2 14 22 14 22s14-11.8 14-22C28 6.3 21.7 0 14 0z" fill="${color}"/><circle cx="14" cy="14" r="6" fill="white" opacity=".92"/></svg>`,
-    className:'',
-    iconSize:[28,36],
-    iconAnchor:[14,36],
-    popupAnchor:[0,-36]
-  });
-}
-
-function renderMap(){
+function renderMap() {
   ensureMap();
-  S.markers.forEach(m=>m.remove());
-  S.markers=[];
+  S.clusterGroup.clearLayers();
+  S.markers = [];
 
-  filtered().forEach(st=>{
-    const mk=L.marker([st.lat,st.lng],{icon:stationIcon(FC[S.fuel]||'#0b7f88')}).addTo(S.map);
-    mk.bindPopup(`<strong>${st.name}</strong><br>${st.city}<br><b style="color:${FC[S.fuel]}">${st.prices[S.fuel].toFixed(3)} €/L</b>`);
-    mk.on('click',()=>{S.selId=st.id;renderDetail();});
+  const items = filtered();
+  const prices = items.map(s => s.prices[S.fuel]).filter(Boolean);
+  const bestPrice = prices.length ? Math.min(...prices) : null;
+
+  items.forEach(st => {
+    const price = st.prices[S.fuel];
+    const isBest = price === bestPrice;
+    const mk = L.marker([st.lat, st.lng], { icon: stationIcon(price, FC[S.fuel] || '#0b7f88', isBest) });
+    mk.bindPopup(`<strong>${st.name}</strong><br>${st.city}<br><b style="color:${FC[S.fuel]}">${price ? price.toFixed(3) + ' €/L' : 'N/A'}</b><br><a href="https://maps.google.com/?q=${st.lat},${st.lng}" target="_blank" rel="noopener" style="color:#0b7f88;font-size:.85rem">🧭 Itinéraire</a>`);
+    mk.on('click', () => { S.selId = st.id; renderDetail(); expandBottomSheet(); });
+    S.clusterGroup.addLayer(mk);
     S.markers.push(mk);
   });
 
-  setTimeout(()=>S.map.invalidateSize(),50);
+  setTimeout(() => S.map.invalidateSize(), 50);
 }
 
-function renderUserPosition(){
+function renderUserPosition() {
   ensureMap();
-  if(S.userDot)S.userDot.remove();
-  if(S.userAccuracy)S.userAccuracy.remove();
-  S.userDot=L.marker([S.pos.lat,S.pos.lng],{icon:userIcon()}).addTo(S.map);
-  S.map.flyTo([S.pos.lat,S.pos.lng],16,{animate:true,duration:1.8});
+  if (S.userDot) S.userDot.remove();
+  S.userDot = L.marker([S.pos.lat, S.pos.lng], { icon: userIcon() }).addTo(S.map);
+  S.map.flyTo([S.pos.lat, S.pos.lng], 13, { animate: true, duration: 1.5 });
 }
 
-function renderDetail(){
-  const st=S.stations.find(s=>s.id===S.selId);
-  const box=document.getElementById('stationDetails');
-  if(!box)return;
-  if(!st){
-    box.innerHTML='<div class="empty"><h3>Choisissez une station</h3><p>Le détail s\'affichera ici.</p></div>';
+// ── Fiche détail station ──────────────────────────────────────────────
+function renderDetail() {
+  const st = S.stations.find(s => s.id === S.selId);
+  const box = document.getElementById('stationDetails');
+  if (!box) return;
+  if (!st) {
+    box.innerHTML = '';
     return;
   }
 
-  const vals=FUELS.map(f=>st.prices[f]).filter(v=>v);
-  const min=Math.min(...vals),max=Math.max(...vals);
+  const vals = FUELS.map(f => st.prices[f]).filter(v => v);
+  const min = Math.min(...vals);
+  const max = Math.max(...vals);
+  const dist = km(S.pos.lat, S.pos.lng, st.lat, st.lng);
 
-  let html=`<div style="margin-bottom:.8rem"><div style="font-family:var(--fdis);font-size:1.15rem;font-weight:900">${st.name}</div><div style="font-size:.88rem;color:var(--tx1)">${st.city}${st.addr?` · ${st.addr}`:''}</div></div><div class="price-grid">`;
+  let html = `
+  <div class="detail-card">
+    <div class="detail-header">
+      <div>
+        <div class="detail-name">${st.name}</div>
+        <div class="detail-sub">${st.city}${st.addr ? ` · ${st.addr}` : ''}</div>
+        <div class="detail-dist">📍 ${dist} km</div>
+      </div>
+      <a href="https://maps.google.com/?q=${st.lat},${st.lng}" target="_blank" rel="noopener" class="btn btn-itinerary" title="Ouvrir dans Google Maps">
+        🧭 <span>Itinéraire</span>
+      </a>
+    </div>
+    <div class="price-grid">`;
 
-  FUELS.forEach(f=>{
-    if(st.prices[f]){
-      const cls=st.prices[f]===min?'best':st.prices[f]===max?'worst':'';
-      html+=`<div class="price-chip ${cls}"><div class="f-name">${f}</div><div class="f-val" style="color:${FC[f]}">${st.prices[f].toFixed(3)} €</div></div>`;
+  FUELS.forEach(f => {
+    if (st.prices[f]) {
+      const cls = st.prices[f] === min ? 'best' : st.prices[f] === max ? 'worst' : '';
+      const pct = max > min ? Math.round(((st.prices[f] - min) / (max - min)) * 100) : 0;
+      html += `
+      <div class="price-chip ${cls}">
+        <div class="f-name">${f}</div>
+        <div class="f-val" style="color:${FC[f]}">${st.prices[f].toFixed(3)} €</div>
+        <div class="f-bar"><div class="f-bar-fill" style="width:${100 - pct}%;background:${FC[f]}"></div></div>
+      </div>`;
     }
   });
 
-  html+='</div>';
-  box.innerHTML=html;
+  html += `</div>
+    <div class="detail-actions">
+      <button class="btn" onclick="openProposalFor(${st.id})">✏️ Corriger un prix</button>
+      <button class="btn" onclick="S.selId=null;renderDetail()">&times; Fermer</button>
+    </div>
+  </div>`;
+
+  box.innerHTML = html;
 }
 
-function renderSession(){
-  const box=document.getElementById('sessionCard');
-  if(!box)return;
-  if(!S.user){
-    box.innerHTML='<div class="empty"><h3>Invité</h3><p>Créez un compte pour commenter.</p></div>';
-    return;
-  }
-  box.innerHTML=`<div class="log-item" style="display:flex;justify-content:space-between"><span>Prénom</span><b>${S.user.name}</b></div><div class="log-item" style="display:flex;justify-content:space-between"><span>Email</span><b>${S.user.email}</b></div><div class="log-item" style="display:flex;justify-content:space-between"><span>Carburant</span><span class="fuel-chip ${FCLS[S.user.fuel]}">${S.user.fuel}</span></div>`;
+window.openProposalFor = function(stId) {
+  const st = S.stations.find(s => s.id === stId);
+  if (!st) return;
+  const sel = document.getElementById('commentStation');
+  if (sel) sel.value = stId;
+  viewTransition('communityView');
+  toast('Station pré-sélectionnée');
+};
+
+// ── Prix moyens dans les pills ────────────────────────────────────────
+function updatePillAverages() {
+  const items = S.stations.filter(s => {
+    if (!S.radius) return true;
+    return km(S.pos.lat, S.pos.lng, s.lat, s.lng) <= S.radius;
+  });
+  FUELS.forEach(f => {
+    const el = document.getElementById(`avg-${f}`);
+    if (!el) return;
+    const vals = items.map(s => s.prices[f]).filter(Boolean);
+    el.textContent = vals.length ? (vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(2) + '€' : '';
+  });
 }
 
-function renderAdmin(){
-  const q=[
-    ...S.comments.filter(c=>c.status==='pending').map(c=>({type:'comment',...c})),
-    ...S.proposals.filter(p=>p.status==='pending').map(p=>({type:'proposal',...p}))
-  ].sort((a,b)=>b.at-a.at);
+// ── Liste des stations ────────────────────────────────────────────────
+function renderStationList() {
+  const list = document.getElementById('stationList');
+  if (!list) return;
 
-  const blob=document.getElementById('adminBlob');
-  const count=document.getElementById('adminQueueCount');
-  if(blob)blob.textContent=q.length;
-  if(count)count.textContent=q.length;
+  const fuel = S.fuel;
+  const items = filtered();
+  const best = items.length ? Math.min(...items.map(s => s.prices[fuel])) : null;
+  const worst = items.length ? Math.max(...items.map(s => s.prices[fuel])) : null;
 
-  const queue=document.getElementById('adminQueueFull');
-  if(queue){
-    const html=q.map(item=>{
-      const st=S.stations.find(s=>s.id===item.stId);
-      return `<div class="queue-item"><div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:.5rem"><span class="badge ${item.type==='comment'?'bg-pri':'bg-acc'}">${item.type==='comment'?'Commentaire':'Correction'}</span><span class="badge bg-acc">En attente</span></div><div style="font-weight:800;font-size:.92rem">${st?.name||'Station'} — ${st?.city||''}</div><div style="font-size:.78rem;color:var(--tx2);margin:.2rem 0 .55rem">Par <b>${item.author}</b></div><div style="background:var(--bg);border:1px solid var(--bor);border-radius:.9rem;padding:.65rem .75rem;font-size:.9rem;line-height:1.45;margin-bottom:.55rem">${item.type==='comment'?item.text:`<span class="fuel-chip ${FCLS[item.fuel]}">${item.fuel}</span> → <strong style="color:var(--ok)">${item.price.toFixed(3)} €/L</strong><div style="margin-top:.35rem;color:var(--tx1);font-size:.8rem">${item.reason}</div>`}</div><div style="display:flex;gap:.5rem;margin-top:.75rem;flex-wrap:wrap"><button class="btn btn-pri" style="padding:.55rem .85rem" onclick="approve('${item.type}',${item.id})">✓</button><button class="btn btn-danger" style="padding:.55rem .85rem" onclick="reject('${item.type}',${item.id})">✕</button></div></div>`;
-    }).join('');
-    queue.innerHTML=html||'<div class="empty"><h3>File vide</h3><p>Aucune contribution en attente.</p></div>';
-  }
+  const bestMini = document.getElementById('bestPriceMini');
+  if (bestMini) bestMini.textContent = best !== null ? `${best.toFixed(3)}€ min` : '—';
 
-  const log=document.getElementById('activityLog');
-  if(log){
-    log.innerHTML=S.activity.map(x=>`<div class="log-item" style="display:flex;justify-content:space-between;gap:.75rem"><div>${x.msg}</div><div style="color:var(--tx2);font-size:.72rem;white-space:nowrap">${x.at}</div></div>`).join('')||'<div class="empty"><h3>Aucune activité</h3></div>';
-  }
-}
+  updatePillAverages();
 
-function renderStationList(){
-  const list=document.getElementById('stationList');
-  if(!list)return;
+  list.innerHTML = items.length ? items.map((st, i) => {
+    const price = st.prices[fuel];
+    const klass = price === best ? 'good' : price === worst ? 'high' : 'mid';
+    const dist = km(S.pos.lat, S.pos.lng, st.lat, st.lng);
+    const pct = best !== null && worst !== null && worst > best
+      ? Math.round(((price - best) / (worst - best)) * 100) : 0;
+    return `<div class="station-item" data-id="${st.id}">
+      <div class="station-top">
+        <div class="station-left">
+          <div class="station-num">${String(i + 1).padStart(2, '0')}</div>
+          <div style="min-width:0">
+            <div class="station-name">${st.name}</div>
+            <div class="station-sub">${st.addr || st.city}</div>
+          </div>
+        </div>
+        <div class="station-price ${klass}">
+          ${price.toFixed(3)}
+          <div style="font-size:.72rem;font-weight:700;color:var(--tx2)">€/L</div>
+        </div>
+      </div>
+      <div class="station-bar"><div class="station-bar-fill ${klass}" style="width:${100 - pct}%"></div></div>
+      <div class="station-actions">
+        <span class="station-action">📍 ${dist} km</span>
+        <a class="station-action" href="https://maps.google.com/?q=${st.lat},${st.lng}" target="_blank" rel="noopener">🧭 Itinéraire</a>
+        <span class="station-action">#${st.id}</span>
+      </div>
+    </div>`;
+  }).join('') : '<div class="empty"><h3>Aucune station</h3><p>Aucun résultat pour ces filtres.</p></div>';
 
-  const fuel=S.fuel;
-  const items=filtered();
-  const best=items.length?Math.min(...items.map(s=>s.prices[fuel])):null;
-  const worst=items.length?Math.max(...items.map(s=>s.prices[fuel])):null;
-
-  const bestMini=document.getElementById('bestPriceMini');
-  if(bestMini)bestMini.textContent=best!==null?`${best.toFixed(3)}€ min`:'—';
-
-  list.innerHTML=items.length?items.map((st,i)=>{
-    const price=st.prices[fuel];
-    const klass=price===best?'good':price===worst?'high':'mid';
-    const dist=km(S.pos.lat,S.pos.lng,st.lat,st.lng);
-    return `<div class="station-item" data-id="${st.id}"><div class="station-top"><div class="station-left"><div class="station-num">${String(i+1).padStart(2,'0')}</div><div style="min-width:0"><div class="station-name">${st.name}</div><div class="station-sub">${st.addr || st.city}</div></div></div><div class="station-price ${klass}">${price.toFixed(3)}<div style="font-size:.72rem;font-weight:700;color:var(--tx2)">€/L</div></div></div><div class="station-actions"><span class="station-action">📍 ${dist} km</span><span class="station-action">💬 Suivre cette station</span><span class="station-action">#${st.id}</span></div></div>`;
-  }).join(''):'<div class="empty"><h3>Aucune station</h3><p>Aucun résultat pour ces filtres.</p></div>';
-
-  list.querySelectorAll('.station-item').forEach(el=>{
-    el.addEventListener('click',()=>{
-      S.selId=+el.dataset.id;
+  list.querySelectorAll('.station-item').forEach(el => {
+    el.addEventListener('click', () => {
+      S.selId = +el.dataset.id;
       renderDetail();
+      expandBottomSheet();
+      const st = S.stations.find(s => s.id === S.selId);
+      if (st && S.map) S.map.flyTo([st.lat, st.lng], 15, { animate: true, duration: 1 });
     });
   });
 }
 
-function renderAll(){
+// ── Bottom sheet mobile ───────────────────────────────────────────────
+function expandBottomSheet() {
+  const panel = document.getElementById('stationPanel');
+  if (panel && window.innerWidth <= 700) {
+    panel.classList.add('expanded');
+  }
+}
+
+// Drag handle pour bottom sheet
+function initDragHandle() {
+  const handle = document.getElementById('dragHandle');
+  const panel  = document.getElementById('stationPanel');
+  if (!handle || !panel) return;
+  let startY = 0;
+  handle.addEventListener('pointerdown', e => {
+    startY = e.clientY;
+    handle.setPointerCapture(e.pointerId);
+  });
+  handle.addEventListener('pointermove', e => {
+    if (!e.buttons) return;
+    const dy = e.clientY - startY;
+    if (dy < -30) panel.classList.add('expanded');
+    if (dy > 30)  panel.classList.remove('expanded');
+  });
+}
+
+// ── Rendu session ─────────────────────────────────────────────────────
+function renderSession() {
+  const box = document.getElementById('sessionCard');
+  if (!box) return;
+  if (!S.user) {
+    box.innerHTML = '<div class="empty"><h3>Invité</h3><p>Créez un compte pour commenter.</p></div>';
+    return;
+  }
+  box.innerHTML = `
+    <div class="log-item" style="display:flex;justify-content:space-between"><span>Prénom</span><b>${S.user.name}</b></div>
+    <div class="log-item" style="display:flex;justify-content:space-between"><span>Email</span><b>${S.user.email}</b></div>
+    <div class="log-item" style="display:flex;justify-content:space-between"><span>Carburant</span><span class="fuel-chip ${FCLS[S.user.fuel]}">${S.user.fuel}</span></div>`;
+}
+
+// ── Rendu admin ───────────────────────────────────────────────────────
+function renderAdmin() {
+  const q = [
+    ...S.comments.filter(c => c.status === 'pending').map(c => ({ type: 'comment', ...c })),
+    ...S.proposals.filter(p => p.status === 'pending').map(p => ({ type: 'proposal', ...p }))
+  ].sort((a, b) => b.at - a.at);
+
+  const blob  = document.getElementById('adminBlob');
+  const count = document.getElementById('adminQueueCount');
+  if (blob)  blob.textContent  = q.length;
+  if (count) count.textContent = q.length;
+
+  const queue = document.getElementById('adminQueueFull');
+  if (queue) {
+    const html = q.map(item => {
+      const st = S.stations.find(s => s.id === item.stId);
+      return `<div class="queue-item">
+        <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:.5rem">
+          <span class="badge ${item.type === 'comment' ? 'bg-pri' : 'bg-acc'}">${item.type === 'comment' ? 'Commentaire' : 'Correction'}</span>
+          <span class="badge bg-acc">En attente</span>
+        </div>
+        <div style="font-weight:800;font-size:.92rem">${st?.name || 'Station'} — ${st?.city || ''}</div>
+        <div style="font-size:.78rem;color:var(--tx2);margin:.2rem 0 .55rem">Par <b>${item.author}</b></div>
+        <div style="background:var(--bg);border:1px solid var(--bor);border-radius:.9rem;padding:.65rem .75rem;font-size:.9rem;line-height:1.45;margin-bottom:.55rem">
+          ${item.type === 'comment' ? item.text : `<span class="fuel-chip ${FCLS[item.fuel]}">${item.fuel}</span> → <strong style="color:var(--ok)">${item.price.toFixed(3)} €/L</strong><div style="margin-top:.35rem;color:var(--tx1);font-size:.8rem">${item.reason}</div>`}
+        </div>
+        <div style="display:flex;gap:.5rem;margin-top:.75rem;flex-wrap:wrap">
+          <button class="btn btn-pri" style="padding:.55rem .85rem" onclick="approve('${item.type}',${item.id})">✓ Approuver</button>
+          <button class="btn btn-danger" style="padding:.55rem .85rem" onclick="reject('${item.type}',${item.id})">✕ Refuser</button>
+        </div>
+      </div>`;
+    }).join('');
+    queue.innerHTML = html || '<div class="empty"><h3>File vide</h3><p>Aucune contribution en attente.</p></div>';
+  }
+
+  const log = document.getElementById('activityLog');
+  if (log) {
+    log.innerHTML = S.activity.map(x => `<div class="log-item" style="display:flex;justify-content:space-between;gap:.75rem"><div>${x.msg}</div><div style="color:var(--tx2);font-size:.72rem;white-space:nowrap">${x.at}</div></div>`).join('') || '<div class="empty"><h3>Aucune activité</h3></div>';
+  }
+}
+
+function hydrateSelects() {
+  const f  = FUELS.map(x => `<option value="${x}">${x}</option>`).join('');
+  const el = document.getElementById('profileFuelSelect');
+  if (el) { el.innerHTML = f; el.value = S.fuel; }
+  const st = S.stations.map(s => `<option value="${s.id}">${s.name} — ${s.city}</option>`).join('');
+  const c  = document.getElementById('commentStation');
+  if (c) c.innerHTML = st;
+}
+
+function renderAll() {
   hydrateSelects();
   renderMap();
   renderDetail();
   renderSession();
   renderAdmin();
   renderStationList();
-  const nFuelBadge=document.getElementById('nFuelBadge');
-  if(nFuelBadge)nFuelBadge.textContent=S.fuel;
 }
 
-function approve(type,id){
-  const c=S.comments.find(x=>x.id===id);
-  const p=S.proposals.find(x=>x.id===id);
-  if(type==='comment'&&c)c.status='approved';
-  if(type==='proposal'&&p){
-    p.status='approved';
-    const st=S.stations.find(s=>s.id===p.stId);
-    if(st)st.prices[p.fuel]=p.price;
+// ── Approve / Reject ──────────────────────────────────────────────────
+function approve(type, id) {
+  const c = S.comments.find(x => x.id === id);
+  const p = S.proposals.find(x => x.id === id);
+  if (type === 'comment' && c) c.status = 'approved';
+  if (type === 'proposal' && p) {
+    p.status = 'approved';
+    const st = S.stations.find(s => s.id === p.stId);
+    if (st) st.prices[p.fuel] = p.price;
   }
+  S.activity.unshift({ id: Date.now(), msg: `✅ ${type === 'comment' ? 'Commentaire' : 'Prix'} approuvé`, at: now() });
   renderAll();
-  toast('Approuvé');
+  toast('Approuvé ✓');
 }
 
-function reject(type,id){
-  const c=S.comments.find(x=>x.id===id);
-  const p=S.proposals.find(x=>x.id===id);
-  if(type==='comment'&&c)c.status='rejected';
-  if(type==='proposal'&&p)p.status='rejected';
+function reject(type, id) {
+  const c = S.comments.find(x => x.id === id);
+  const p = S.proposals.find(x => x.id === id);
+  if (type === 'comment' && c) c.status = 'rejected';
+  if (type === 'proposal' && p) p.status = 'rejected';
+  S.activity.unshift({ id: Date.now(), msg: `❌ ${type === 'comment' ? 'Commentaire' : 'Correction'} refusé`, at: now() });
   renderAll();
-  toast('Refusé');
+  toast('Refusé ✗');
 }
 
-window.approve=approve;
-window.reject=reject;
+window.approve = approve;
+window.reject  = reject;
 
-function view(id){
-  document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
-  const el=document.getElementById(id);
-  if(el)el.classList.add('active');
-  document.querySelectorAll('[data-view]').forEach(b=>b.classList.toggle('active',b.dataset.view===id));
+// ── Navigation avec View Transitions API ─────────────────────────────
+function viewTransition(id) {
+  const doSwitch = () => {
+    document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+    const el = document.getElementById(id);
+    if (el) el.classList.add('active');
+    document.querySelectorAll('[data-view]').forEach(b => b.classList.toggle('active', b.dataset.view === id));
 
-  const mapPanel=document.getElementById('mapPanel');
-  const adminPanel=document.getElementById('adminPanel');
+    const mapPanel   = document.getElementById('mapPanel');
+    const adminPanel = document.getElementById('adminPanel');
+    if (id === 'adminView') {
+      if (mapPanel)   mapPanel.style.display   = 'none';
+      if (adminPanel) adminPanel.style.display = 'block';
+      setTimeout(() => renderAdmin(), 50);
+    } else {
+      if (mapPanel)   mapPanel.style.display   = 'block';
+      if (adminPanel) adminPanel.style.display = 'none';
+    }
+    if (id === 'mapView' && S.map) setTimeout(() => S.map.invalidateSize(), 120);
+  };
 
-  if(id==='adminView'){
-    if(mapPanel)mapPanel.style.display='none';
-    if(adminPanel)adminPanel.style.display='block';
-    setTimeout(()=>renderAdmin(),50);
-  }else{
-    if(mapPanel)mapPanel.style.display='block';
-    if(adminPanel)adminPanel.style.display='none';
+  if (document.startViewTransition) {
+    document.startViewTransition(doSwitch);
+  } else {
+    doSwitch();
   }
-
-  if(id==='mapView'&&S.map)setTimeout(()=>S.map.invalidateSize(),120);
 }
-window.view=view;
+window.view = viewTransition;
 
-document.querySelectorAll('[data-view]').forEach(b=>b.addEventListener('click',()=>view(b.dataset.view)));
+// ── Listeners navigation ──────────────────────────────────────────────
+document.querySelectorAll('[data-view]').forEach(b => b.addEventListener('click', () => viewTransition(b.dataset.view)));
 
-const cityBtn=document.getElementById('cityBtn');
-const citySearch=document.getElementById('citySearch');
-if(cityBtn&&citySearch){
-  cityBtn.addEventListener('click',()=>{
+// Ville
+const cityBtn    = document.getElementById('cityBtn');
+const citySearch = document.getElementById('citySearch');
+if (cityBtn && citySearch) {
+  cityBtn.addEventListener('click', () => {
     cityBtn.classList.toggle('active');
-    citySearch.style.display=citySearch.style.display==='none'?'block':'none';
-    const input=document.getElementById('cityInput');
-    if(citySearch.style.display==='block'&&input)setTimeout(()=>input.focus(),20);
+    citySearch.style.display = citySearch.style.display === 'none' ? 'block' : 'none';
+    const input = document.getElementById('cityInput');
+    if (citySearch.style.display === 'block' && input) setTimeout(() => input.focus(), 20);
   });
 }
 
-const cityInput=document.getElementById('cityInput');
-if(cityInput){
-  cityInput.addEventListener('input',()=>{
-    const q=cityInput.value.toLowerCase().trim();
-    if(!q){
-      renderMap();
-      renderStationList();
-      return;
-    }
-    const station=S.stations.find(s=>`${s.name} ${s.city} ${s.addr||''}`.toLowerCase().includes(q));
-    if(station){
-      S.selId=station.id;
+const cityInput = document.getElementById('cityInput');
+if (cityInput) {
+  cityInput.addEventListener('input', () => {
+    const q = cityInput.value.toLowerCase().trim();
+    if (!q) { renderMap(); renderStationList(); return; }
+    const station = S.stations.find(s => `${s.name} ${s.city} ${s.addr || ''}`.toLowerCase().includes(q));
+    if (station) {
+      S.selId = station.id;
       renderDetail();
-      S.pos={lat:station.lat,lng:station.lng};
+      S.pos = { lat: station.lat, lng: station.lng };
       renderUserPosition();
       renderMap();
       renderStationList();
-      return;
+    } else {
+      renderMap();
+      renderStationList();
     }
+  });
+}
+
+// Autour de moi
+const aroundBtn  = document.getElementById('aroundMeBtn');
+const aroundMenu = document.getElementById('aroundMenu');
+if (aroundBtn && aroundMenu) {
+  aroundBtn.addEventListener('click', () => {
+    aroundMenu.style.display = aroundMenu.style.display === 'block' ? 'none' : 'block';
+  });
+}
+
+const radiusRange = document.getElementById('radiusRange');
+const radiusVal   = document.getElementById('radiusVal');
+if (radiusRange && radiusVal) {
+  radiusRange.addEventListener('input', () => {
+    S.radius = +radiusRange.value;
+    radiusVal.textContent = S.radius;
     renderMap();
     renderStationList();
   });
 }
 
-const aroundBtn=document.getElementById('aroundMeBtn');
-const aroundMenu=document.getElementById('aroundMenu');
-if(aroundBtn&&aroundMenu){
-  aroundBtn.addEventListener('click',()=>{
-    aroundMenu.style.display=aroundMenu.style.display==='block'?'none':'block';
+// Géolocalisation avec watchPosition
+const locateBtn = document.getElementById('locateBtn');
+if (locateBtn) {
+  locateBtn.addEventListener('click', () => {
+    if (!navigator.geolocation) return toast('Géolocalisation indisponible.');
+    if (S.watchId) navigator.geolocation.clearWatch(S.watchId);
+    S.watchId = navigator.geolocation.watchPosition(
+      pos => {
+        S.pos = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+        renderUserPosition();
+        renderMap();
+        renderStationList();
+        // Charge l'API avec la vraie position
+        fetchStationsAPI(S.pos.lat, S.pos.lng, S.radius);
+      },
+      () => toast('Position refusée'),
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 30000 }
+    );
+    toast('📍 Localisation active…');
   });
 }
 
-const radiusRange=document.getElementById('radiusRange');
-const radiusVal=document.getElementById('radiusVal');
-if(radiusRange&&radiusVal){
-  radiusRange.addEventListener('input',()=>{
-    S.radius=+radiusRange.value;
-    radiusVal.textContent=S.radius;
-    renderMap();
-    renderStationList();
-  });
-}
-
-const locateBtn=document.getElementById('locateBtn');
-if(locateBtn){
-  locateBtn.addEventListener('click',()=>{
-    if(!navigator.geolocation)return toast('Géolocalisation indisponible.');
-    navigator.geolocation.getCurrentPosition(pos=>{
-      S.pos={lat:pos.coords.latitude,lng:pos.coords.longitude};
-      S.lastAccuracy=pos.coords.accuracy||20;
-      renderUserPosition();
-      renderMap();
-      renderStationList();
-      toast('Position détectée');
-    },()=>toast('Position refusée'),{enableHighAccuracy:true,timeout:10000,maximumAge:0});
-  });
-}
-
-document.querySelectorAll('.fuel-pill').forEach(btn=>{
-  btn.addEventListener('click',()=>{
-    document.querySelectorAll('.fuel-pill').forEach(b=>b.classList.remove('active'));
+// Pills carburant
+document.querySelectorAll('.fuel-pill').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.fuel-pill').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
-    S.fuel=btn.dataset.fuel;
+    S.fuel = btn.dataset.fuel;
     renderMap();
     renderDetail();
     renderStationList();
   });
 });
 
-document.querySelectorAll('.status-pill').forEach(btn=>{
-  btn.addEventListener('click',()=>{
-    document.querySelectorAll('.status-pill').forEach(b=>b.classList.remove('active'));
+// Pills statut
+document.querySelectorAll('.status-pill').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.status-pill').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
+    S.statusFilter = btn.dataset.status;
+    renderMap();
+    renderStationList();
   });
 });
 
-const registerForm=document.getElementById('registerForm');
-if(registerForm){
-  registerForm.addEventListener('submit',e=>{
+// Formulaire compte
+const registerForm = document.getElementById('registerForm');
+if (registerForm) {
+  registerForm.addEventListener('submit', e => {
     e.preventDefault();
-    const fd=new FormData(e.target);
-    S.user={name:fd.get('name'),email:fd.get('email'),fuel:fd.get('preferredFuel')};
-    S.fuel=S.user.fuel;
+    const fd = new FormData(e.target);
+    S.user = { name: fd.get('name'), email: fd.get('email'), fuel: fd.get('preferredFuel') };
+    S.fuel = S.user.fuel;
     e.target.reset();
-    toast('Bienvenue');
+    toast(`Bienvenue ${S.user.name} 👋`);
     renderAll();
   });
 }
 
-const commentForm=document.getElementById('commentForm');
-if(commentForm){
-  commentForm.addEventListener('submit',e=>{
+// Formulaire commentaire
+const commentForm = document.getElementById('commentForm');
+if (commentForm) {
+  commentForm.addEventListener('submit', e => {
     e.preventDefault();
-    if(!S.user)return toast('Créez un compte d\'abord.');
-    const txt=document.getElementById('commentText')?.value.trim();
-    if(!txt)return toast('Ajoutez un commentaire.');
-    const file=document.getElementById('commentPhoto')?.files[0];
+    if (!S.user) return toast('Créez un compte d\'abord.');
+    const txt  = document.getElementById('commentText')?.value.trim();
+    if (!txt)   return toast('Ajoutez un commentaire.');
+    const file = document.getElementById('commentPhoto')?.files[0];
     S.comments.unshift({
-      id:Date.now(),
-      stId:+document.getElementById('commentStation').value,
-      author:S.user.name,
-      text:txt,
-      status:'pending',
-      photo:file?file.name:'',
-      at:Date.now()
+      id:     Date.now(),
+      stId:   +document.getElementById('commentStation').value,
+      author: S.user.name,
+      text:   txt,
+      status: 'pending',
+      photo:  file ? file.name : '',
+      at:     Date.now()
     });
     e.target.reset();
     hidePreview('comment');
+    S.activity.unshift({ id: Date.now(), msg: `💬 Commentaire soumis par ${S.user.name}`, at: now() });
     renderAll();
-    toast('Envoyé');
+    toast('Envoyé — en attente de modération');
   });
 }
 
-function preview(file,input){
-  const wrap=document.getElementById(input+'Preview');
-  if(!wrap)return;
-  if(!file){
-    wrap.style.display='none';
-    return;
-  }
-  const img=document.getElementById(input+'PreviewImg');
-  const name=document.getElementById(input+'PreviewName');
-  const size=document.getElementById(input+'PreviewSize');
-  if(img)img.src=URL.createObjectURL(file);
-  if(name)name.textContent=file.name;
-  if(size)size.textContent=(file.size/1024/1024).toFixed(2)+' MB';
-  wrap.style.display='flex';
+function preview(file, input) {
+  const wrap = document.getElementById(input + 'Preview');
+  if (!wrap) return;
+  if (!file) { wrap.style.display = 'none'; return; }
+  const img  = document.getElementById(input + 'PreviewImg');
+  const name = document.getElementById(input + 'PreviewName');
+  const size = document.getElementById(input + 'PreviewSize');
+  if (img)  img.src = URL.createObjectURL(file);
+  if (name) name.textContent = file.name;
+  if (size) size.textContent = (file.size / 1024 / 1024).toFixed(2) + ' MB';
+  wrap.style.display = 'flex';
 }
 
-function hidePreview(input){
-  const wrap=document.getElementById(input+'Preview');
-  if(wrap)wrap.style.display='none';
+function hidePreview(input) {
+  const wrap = document.getElementById(input + 'Preview');
+  if (wrap) wrap.style.display = 'none';
 }
 
-const commentPhoto=document.getElementById('commentPhoto');
-if(commentPhoto){
-  commentPhoto.addEventListener('change',e=>preview(e.target.files[0],'comment'));
+const commentPhoto = document.getElementById('commentPhoto');
+if (commentPhoto) {
+  commentPhoto.addEventListener('change', e => preview(e.target.files[0], 'comment'));
 }
 
-const seedBtn=document.getElementById('seedBtn');
-if(seedBtn){
-  seedBtn.addEventListener('click',()=>{
-    S.stations=JSON.parse(JSON.stringify(DEMO));
-    S.comments=[
-      {id:1,stId:2,author:'Lucas',text:'Prix conformes ce matin.',status:'approved',at:Date.now()-3e5},
-      {id:2,stId:1,author:'Nora',text:'Beaucoup de monde mais prix corrects.',status:'pending',at:Date.now()-1e5}
+// Bouton Démo
+const seedBtn = document.getElementById('seedBtn');
+if (seedBtn) {
+  seedBtn.addEventListener('click', () => {
+    S.stations = JSON.parse(JSON.stringify(DEMO));
+    S.comments = [
+      { id: 1, stId: 2, author: 'Lucas', text: 'Prix conformes ce matin.', status: 'approved', at: Date.now() - 3e5 },
+      { id: 2, stId: 1, author: 'Nora',  text: 'Beaucoup de monde mais prix corrects.', status: 'pending', at: Date.now() - 1e5 }
     ];
-    S.proposals=[
-      {id:1,stId:6,fuel:'SP95-E10',price:1.689,reason:'Photo ticket 18h20.',author:'Mathis',photo:'ticket.jpg',status:'pending',at:Date.now()}
+    S.proposals = [
+      { id: 1, stId: 6, fuel: 'SP95-E10', price: 1.689, reason: 'Photo ticket 18h20.', author: 'Mathis', photo: 'ticket.jpg', status: 'pending', at: Date.now() }
     ];
-    S.activity=[{id:1,msg:'🎭 Mode démo activé',at:now()}];
+    S.activity = [{ id: 1, msg: '🎭 Mode démo activé', at: now() }];
     renderAll();
-    toast('Démo activée');
+    toast('🎭 Démo activée');
   });
 }
 
-const themeChk=document.getElementById('themeChk');
+// Thème
+const themeChk = document.getElementById('themeChk');
 
-function setTheme(dark){
-  document.documentElement.setAttribute('data-theme',dark?'dark':'light');
-  if(themeChk)themeChk.checked=dark;
-  const ico=document.querySelector('.ico-sun,.ico-moon');
-  if(ico){
-    ico.outerHTML=dark
+function setTheme(dark) {
+  document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
+  if (themeChk) themeChk.checked = dark;
+  const knob = document.querySelector('.ios-knob');
+  if (knob) {
+    knob.innerHTML = dark
       ? `<svg class="ico-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>`
       : `<svg class="ico-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>`;
   }
-  if(S.map)setTimeout(()=>S.map.invalidateSize(),120);
-  localStorage.setItem('theme',dark?'dark':'light');
+  if (S.map) setTimeout(() => S.map.invalidateSize(), 120);
+  localStorage.setItem('theme', dark ? 'dark' : 'light');
 }
 
-if(themeChk){
-  themeChk.addEventListener('change',()=>setTheme(themeChk.checked));
-}
+if (themeChk) themeChk.addEventListener('change', () => setTheme(themeChk.checked));
 
-const savedTheme=localStorage.getItem('theme');
-const prefersDark=matchMedia('(prefers-color-scheme: dark)').matches;
-setTheme(savedTheme?savedTheme==='dark':prefersDark);
+const savedTheme  = localStorage.getItem('theme');
+const prefersDark = matchMedia('(prefers-color-scheme: dark)').matches;
+setTheme(savedTheme ? savedTheme === 'dark' : prefersDark);
 
-function init(){
+// ── Init ──────────────────────────────────────────────────────────────
+function init() {
+  initDragHandle();
   hydrateSelects();
   renderAll();
-  if(document.getElementById('mapPanel')) setTimeout(()=>{ if(S.map) S.map.invalidateSize(); },200);
+  setTimeout(() => { if (S.map) S.map.invalidateSize(); }, 200);
 }
-document.addEventListener('DOMContentLoaded',init);
+
+document.addEventListener('DOMContentLoaded', init);
