@@ -1,17 +1,17 @@
 <!DOCTYPE html>
 <html lang="fr" data-theme="light">
 <head>
-<meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
-<title>FuelApp — Prix carburants France</title>
-<meta name="description" content="Application de comparaison des prix carburants en France."/>
-<link href="https://api.fontshare.com/v2/css?f[]=satoshi@400,500,700,900&f[]=cabinet-grotesk@500,700,800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin=""/>
-<link rel="stylesheet" href="css/style.css"/>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>FuelApp — Prix carburants France</title>
+  <meta name="description" content="Application de comparaison des prix carburants en France."/>
+  <link href="https://api.fontshare.com/v2/css?f[]=satoshi@400,500,700,900&f[]=cabinet-grotesk@500,700,800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin=""/>
+  <link rel="stylesheet" href="css/style.css"/>
 </head>
 <body>
-<div class="shell">
-  <aside class="sidebar">
+<div class="app-shell">
+  <header class="topbar">
     <div class="brand">
       <div class="logo">F</div>
       <div>
@@ -19,152 +19,142 @@
         <div class="brand-tag">Prix carburants France</div>
       </div>
     </div>
-    <nav class="nav">
-      <button class="nav-btn active" data-view="mapView"><span class="nav-ico">🗺️</span><span>Carte & prix</span></button>
+
+    <nav class="nav-top">
+      <button class="nav-btn active" data-view="mapView"><span class="nav-ico">🗺️</span><span>Carte</span></button>
       <button class="nav-btn" data-view="authView"><span class="nav-ico">👤</span><span>Compte</span></button>
       <button class="nav-btn" data-view="communityView"><span class="nav-ico">💬</span><span>Communauté</span></button>
-      <button class="nav-btn" data-view="adminView" id="adminBtn">
-        <span class="nav-ico">🛡️</span>
-        <span class="nav-btn-right">
-          <span>Admin</span>
-          <span class="blob-err" id="adminBlob">0</span>
-        </span>
-      </button>
+      <button class="nav-btn" data-view="adminView" id="adminBtn"><span class="nav-ico">🛡️</span><span>Admin</span><span class="blob-err" id="adminBlob">0</span></button>
+      <button class="btn btn-acc" id="seedBtn" type="button" style="margin-left:.5rem">🎭 Démo</button>
     </nav>
-    <div class="sidebar-meta">
-<div class="themebar" title="Mode sombre/clair">
-  <label class="ios-sw" style="cursor:pointer">
-    <input type="checkbox" id="themeChk"/>
-    <div class="ios-track"></div>
-    <div class="ios-knob">
-      <!-- Soleil vide (contour jaune) par défaut -->
-      <svg class="theme-icon ico-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
-    </div>
-  </label>
-</div>
-      <div class="hint">Astuce : cliquez une station sur la carte pour voir ses prix. Les contributions passent par la modération.</div>
-    </div>
-  </aside>
 
-  <main class="main">
-    <div class="topbar">
-      <div class="top-left">
-        <div>
-          <h1 class="page-title">Prix à la pompe <span class="hl">en direct</span></h1>
-          <p class="page-sub">Une application claire pour comparer, commenter et vérifier les prix carburants sur mobile comme sur PC.</p>
+    <div class="themebar" title="Mode sombre/clair">
+      <label class="ios-sw" style="cursor:pointer">
+        <input type="checkbox" id="themeChk"/>
+        <div class="ios-track"></div>
+        <div class="ios-knob">
+          <svg class="ico-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <circle cx="12" cy="12" r="5"/>
+            <line x1="12" y1="1" x2="12" y2="3"/>
+            <line x1="12" y1="21" x2="12" y2="23"/>
+            <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/>
+            <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+            <line x1="1" y1="12" x2="3" y2="12"/>
+            <line x1="21" y1="12" x2="23" y2="12"/>
+            <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/>
+            <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+          </svg>
         </div>
-      </div>
-      <div class="top-right">
-        <button class="btn btn-pri" id="locateBtn">📍 Ma position</button>
-        <button class="btn btn-acc" id="seedBtn">🎭 Démo</button>
-      </div>
+      </label>
     </div>
+  </header>
 
-    <section class="view active" id="mapView">
-      <div class="kpis">
-        <div class="kpi"><div class="kpi-lbl">Stations</div><div class="kpi-val" id="stationCount">0</div><div class="kpi-small">dans la base affichée</div></div>
-        <div class="kpi"><div class="kpi-lbl">Dernière MAJ</div><div class="kpi-val" id="lastUpdateVal">—</div><div class="kpi-small">heure locale</div></div>
-        <div class="kpi"><div class="kpi-lbl">En attente</div><div class="kpi-val" id="pendingCount">0</div><div class="kpi-small">modération</div></div>
-        <div class="kpi"><div class="kpi-lbl">Commentaires</div><div class="kpi-val" id="commentCount">0</div><div class="kpi-small">validés</div></div>
-      </div>
+  <main class="layout">
+    <aside class="station-panel">
+      <section class="card search-shell">
+        <div class="search-top">
+          <button class="city-pill" id="cityBtn" type="button">
+            <span class="city-ico">🏠</span>
+            <span>Ville</span>
+          </button>
 
-      <div class="grid-2">
+          <button class="around-btn" id="aroundMeBtn" type="button">
+            <span class="pin">📍</span>
+            <span>Autour de moi</span>
+          </button>
+        </div>
+
+        <div class="city-search" id="citySearch" style="display:none">
+          <div class="fld">
+            <label>Ville ou adresse</label>
+            <input id="cityInput" type="text" placeholder="Paris, 12 rue de Rivoli…"/>
+          </div>
+        </div>
+
+        <div class="around-menu" id="aroundMenu">
+          <div class="radius-row">
+            <span class="radius-label">Rayon</span>
+            <span class="radius-value"><span id="radiusVal">10</span> km</span>
+          </div>
+
+          <input type="range" id="radiusRange" min="1" max="50" value="10" step="1" class="radius-slider"/>
+
+          <button class="find-btn" id="locateBtn" type="button">
+            <span class="pin">📍</span>
+            <span>Trouver autour de moi</span>
+          </button>
+        </div>
+
+        <div class="fuel-pills" id="fuelPills">
+          <button class="fuel-pill" data-fuel="Gazole">Gazole</button>
+          <button class="fuel-pill" data-fuel="SP95-E10">E10</button>
+          <button class="fuel-pill" data-fuel="SP98">SP98</button>
+          <button class="fuel-pill" data-fuel="SP95">SP95</button>
+          <button class="fuel-pill" data-fuel="E85">E85 Bio</button>
+          <button class="fuel-pill" data-fuel="GPLc">GPLc</button>
+        </div>
+
+        <div class="status-tabs">
+          <button class="status-pill active" data-status="all">Tous</button>
+          <button class="status-pill good" data-status="cheaper">
+            <span class="status-dot"></span>Moins cher
+          </button>
+          <button class="status-pill mid" data-status="mid">
+            <span class="status-dot"></span>Moyen
+          </button>
+          <button class="status-pill high" data-status="higher">
+            <span class="status-dot"></span>Plus cher
+          </button>
+          <div class="mini-best" id="bestPriceMini">0.947€ min</div>
+        </div>
+      </section>
+
+      <section class="view" id="authView">
         <div class="card">
-          <div class="card-head"><span class="card-title">Carte interactive</span><span class="badge bg-pri" id="nFuelBadge">SP95-E10</span></div>
-          <div class="filters">
-            <div class="fld"><label>Carburant</label><select id="fuelFilter"></select></div>
-            <div class="fld"><label>Recherche</label><input id="searchFilter" placeholder="Paris, Total…"/></div>
-            <div class="fld"><label>Prix max €/L</label><input id="maxPriceFilter" type="number" step="0.001" placeholder="2.200"/></div>
-            <div class="fld"><label>Trier</label><select id="sortFilter"><option value="price">Prix ↑</option><option value="distance">Distance</option><option value="name">Nom A→Z</option></select></div>
-          </div>
-          <div id="map"></div>
+          <div class="card-head"><span class="card-title">Créer un compte</span><span class="badge bg-pri">profil</span></div>
+          <form id="registerForm" class="form-grid">
+            <div class="fld"><label>Prénom</label><input name="name" required placeholder="Camille"/></div>
+            <div class="fld"><label>Email</label><input name="email" type="email" required placeholder="camille@email.fr"/></div>
+            <div class="fld"><label>Mot de passe</label><input name="password" type="password" required placeholder="••••••••"/></div>
+            <div class="fld"><label>Carburant préféré</label><select name="preferredFuel" id="profileFuelSelect"></select></div>
+            <button class="btn btn-pri full" type="submit">Créer mon compte →</button>
+          </form>
         </div>
-
-        <div style="display:flex;flex-direction:column;gap:1rem">
-          <div class="card">
-            <div class="card-head"><span class="card-title">🏆 Top 3 France</span><span class="badge bg-pri">classement</span></div>
-            <div class="rank-list" id="nationalTop"></div>
-          </div>
-          <div class="card">
-            <div class="card-head"><span class="card-title">📍 Top 3 près de vous</span><span class="badge bg-acc">GPS</span></div>
-            <div class="rank-list" id="nearbyTop"></div>
-          </div>
-          <div class="card">
-            <div class="card-head"><span class="card-title">Détail station</span></div>
-            <div id="stationDetails"><div class="empty"><h3>Choisissez une station</h3><p>Le détail s'affichera ici.</p></div></div>
-          </div>
+        <div class="card">
+          <div class="card-head"><span class="card-title">Session active</span></div>
+          <div id="sessionCard"><div class="empty"><h3>Invité</h3><p>Créez un compte pour commenter.</p></div></div>
         </div>
-      </div>
-    </section>
+      </section>
 
-    <section class="view" id="authView">
-      <div class="card">
-        <div class="card-head"><span class="card-title">Créer un compte</span><span class="badge bg-pri">profil</span></div>
-        <form id="registerForm" class="form-grid">
-          <div class="fld"><label>Prénom</label><input name="name" required placeholder="Camille"/></div>
-          <div class="fld"><label>Email</label><input name="email" type="email" required placeholder="camille@email.fr"/></div>
-          <div class="fld"><label>Mot de passe</label><input name="password" type="password" required placeholder="••••••••"/></div>
-          <div class="fld"><label>Carburant préféré</label><select name="preferredFuel" id="profileFuelSelect"></select></div>
-          <button class="btn btn-pri full" type="submit">Créer mon compte →</button>
-        </form>
-      </div>
-      <div class="card">
-        <div class="card-head"><span class="card-title">Session active</span></div>
-        <div id="sessionCard"><div class="empty"><h3>Invité</h3><p>Créez un compte pour commenter et proposer des corrections.</p></div></div>
-      </div>
-    </section>
-
-    <section class="view" id="communityView">
-      <div class="form-grid">
+      <section class="view" id="communityView">
         <div class="card">
           <div class="card-head"><span class="card-title">💬 Commenter</span><span class="badge bg-pri">modération</span></div>
           <form id="commentForm" class="form-grid" style="grid-template-columns:1fr">
             <div class="fld"><label>Station</label><select id="commentStation"></select></div>
             <div class="fld"><label>Commentaire</label><textarea id="commentText" placeholder="Prix corrects ce matin…"></textarea></div>
             <div class="uploader">
-              <div class="fld"><label>Photo / preuve du prix</label><input id="commentPhoto" type="file" accept="image/*"/></div>
+              <div class="fld"><label>Photo / preuve</label><input id="commentPhoto" type="file" accept="image/*"/></div>
               <div class="preview" id="commentPreview">
-                <img id="commentPreviewImg" alt="Aperçu de la photo"/>
-                <div class="meta">
-                  <b id="commentPreviewName">Aucun fichier</b>
-                  <span id="commentPreviewSize">Ajoutez une photo pour appuyer votre commentaire</span>
-                </div>
+                <img id="commentPreviewImg" alt="Aperçu"/>
+                <div class="meta"><b id="commentPreviewName">—</b><span id="commentPreviewSize">—</span></div>
               </div>
-              <div style="font-size:.82rem;color:var(--tx1)">Ajoutez une photo de la pompe, du ticket ou de l'affichage pour faciliter la validation.</div>
             </div>
-            <button class="btn btn-pri" type="submit">Envoyer en modération →</button>
+            <button class="btn btn-pri" type="submit">Envoyer →</button>
           </form>
         </div>
+      </section>
+    </aside>
 
-        <div class="card">
-          <div class="card-head"><span class="card-title">✏️ Corriger un prix</span><span class="badge bg-acc">preuve requise</span></div>
-          <form id="priceProposalForm" class="form-grid" style="grid-template-columns:1fr">
-            <div class="fld"><label>Station</label><select id="proposalStation"></select></div>
-            <div class="fld"><label>Carburant</label><select id="proposalFuel"></select></div>
-            <div class="fld"><label>Nouveau prix (€/L)</label><input id="proposalPrice" type="number" step="0.001" placeholder="1.739"/></div>
-            <div class="fld"><label>Justification</label><textarea id="proposalReason" placeholder="Constaté à la pompe…"></textarea></div>
-            <div class="uploader">
-              <div class="fld"><label>Photo justificative</label><input id="proposalPhoto" type="file" accept="image/*"/></div>
-              <div class="preview" id="proposalPreview">
-                <img id="proposalPreviewImg" alt="Aperçu de la photo"/>
-                <div class="meta">
-                  <b id="proposalPreviewName">Aucun fichier</b>
-                  <span id="proposalPreviewSize">Joignez une preuve pour la correction</span>
-                </div>
-              </div>
-            </div>
-            <button class="btn btn-pri" type="submit">Proposer la correction →</button>
-          </form>
-        </div>
-      </div>
+    <section class="map-panel" id="mapPanel">
+      <div id="map"></div>
     </section>
 
-    <section class="view" id="adminView">
+    <section class="admin-panel" id="adminPanel" style="display:none">
       <div class="card">
-        <div class="card-head"><span class="card-title">File de modération</span><span class="badge bg-acc" id="queueCount">0</span></div>
-        <div id="adminQueue" class="log-list"></div>
+        <div class="card-head"><span class="card-title">File de modération</span><span class="badge bg-acc" id="adminQueueCount">0</span></div>
+        <div id="adminQueueFull" class="log-list"></div>
       </div>
-      <div class="card">
+      <div class="card" style="margin-top:1rem">
         <div class="card-head"><span class="card-title">Journal d'activité</span></div>
         <div id="activityLog" class="log-list"></div>
       </div>
@@ -172,15 +162,7 @@
   </main>
 </div>
 
-<nav class="mob-nav">
-  <button class="mob-btn active" data-view="mapView"><span class="mico">🗺️</span><span>Carte</span></button>
-  <button class="mob-btn" data-view="authView"><span class="mico">👤</span><span>Compte</span></button>
-  <button class="mob-btn" data-view="communityView"><span class="mico">💬</span><span>Comm.</span></button>
-  <button class="mob-btn" data-view="adminView" id="adminMobBtn"><span class="mico">🛡️</span><span>Admin</span><span class="blob-err" id="adminMobBlob">0</span></button>
-</nav>
-
 <div id="toast" class="toast"></div>
-
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
 <script src="js/app.js"></script>
 </body>
