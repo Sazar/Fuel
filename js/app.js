@@ -1,91 +1,157 @@
 /* =====================================================================
    FuelApp — app.js
-   Améliorations : API data.gouv.fr, MarkerCluster, markers prix,
-   bottom sheet mobile drag, stationList/Details complets,
-   itinéraire GPS, prix moyens pills, View Transitions API
+   P0 : API data.gouv.fr au démarrage + géocodage Nominatim
+        + skeleton loading + empty state géoloc refusée
    ===================================================================== */
 
 const FUELS = ['Gazole', 'SP95', 'SP95-E10', 'SP98', 'GPLc', 'E85'];
-const FC = { Gazole: '#2563eb', SP95: '#16a34a', 'SP95-E10': '#059669', SP98: '#7c3aed', GPLc: '#0891b2', E85: '#ca8a04' };
-const FCLS = { Gazole: 'fc-g', SP95: 'fc-95', 'SP95-E10': 'fc-e10', SP98: 'fc-98', GPLc: 'fc-gpl', E85: 'fc-e85' };
+const FC    = { Gazole: '#2563eb', SP95: '#16a34a', 'SP95-E10': '#059669', SP98: '#7c3aed', GPLc: '#0891b2', E85: '#ca8a04' };
+const FCLS  = { Gazole: 'fc-g', SP95: 'fc-95', 'SP95-E10': 'fc-e10', SP98: 'fc-98', GPLc: 'fc-gpl', E85: 'fc-e85' };
 
-// ── API data.gouv.fr ──────────────────────────────────────────────────
+// ── API data.gouv.fr ───────────────────────────────────────────────────────
 const API_BASE = 'https://data.economie.gouv.fr/api/explore/v2.1/catalog/datasets/prix-des-carburants-en-france-flux-instantane-v2/records';
+// API Nominatim pour géocodage ville / adresse
+const NOMINATIM = 'https://nominatim.openstreetmap.org/search';
 
 function mapApiStation(r) {
+  // Compatibilité avec les deux formats possibles de l'API
+  const geom = r.geom || {};
   return {
-    id: r.id || r.id_station || String(Math.random()),
+    id:   r.id || r.id_station || String(Math.random()),
     name: r.nom || r.Nom || 'Station',
     city: r.ville || r.Ville || '',
     addr: r.adresse || r.Adresse || '',
-    lat: parseFloat(r.latitude || (r.geom && r.geom.lat) || 0),
-    lng: parseFloat(r.longitude || (r.geom && r.geom.lon) || 0),
+    lat:  parseFloat(r.latitude  || geom.lat || 0),
+    lng:  parseFloat(r.longitude || geom.lon || 0),
+    brand: r.enseignes || r.enseignes_key || '',
+    updated: r.gazole_maj || r.sp95_maj || '',
     prices: {
-      Gazole:    parseFloat(r.gazole_prix)    || null,
-      SP95:      parseFloat(r.sp95_prix)      || null,
-      'SP95-E10':parseFloat(r.e10_prix)       || null,
-      SP98:      parseFloat(r.sp98_prix)      || null,
-      GPLc:      parseFloat(r.gplc_prix)      || null,
-      E85:       parseFloat(r.e85_prix)       || null
+      Gazole:     parseFloat(r.gazole_prix) || null,
+      SP95:       parseFloat(r.sp95_prix)   || null,
+      'SP95-E10': parseFloat(r.e10_prix)    || null,
+      SP98:       parseFloat(r.sp98_prix)   || null,
+      GPLc:       parseFloat(r.gplc_prix)   || null,
+      E85:        parseFloat(r.e85_prix)    || null
     }
   };
 }
 
-async function fetchStationsAPI(lat, lng, radius = 10) {
+/**
+ * Charge les stations depuis data.economie.gouv.fr
+ * @param {number} lat
+ * @param {number} lng
+ * @param {number} radius  — en km
+ * @param {boolean} silent — si true, pas de toast
+ */
+async function fetchStationsAPI(lat, lng, radius = 50, silent = false) {
   const badge = document.getElementById('apiBadge');
   if (badge) { badge.textContent = '🟡 Chargement…'; badge.className = 'api-badge loading'; }
+
+  showSkeleton();
+
   try {
-    const url = `${API_BASE}?where=distance(geom,geom'POINT(${lng}%20${lat})',${radius}km)&limit=100`;
+    // L'API utilise des coordonnées lon lat (ordre inversé dans la requête WKT)
+    const url = `${API_BASE}?where=distance(geom,geom'POINT(${lng} ${lat})',${radius}km)&limit=100&timezone=Europe%2FParis`;
     const res = await fetch(url);
-    if (!res.ok) throw new Error('API error');
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
+
     if (data.results && data.results.length) {
       S.stations = data.results.map(mapApiStation).filter(s => s.lat && s.lng);
       if (badge) { badge.textContent = `🟢 Live · ${S.stations.length} stations`; badge.className = 'api-badge'; }
+      hideSkeleton();
       renderAll();
-      toast(`${S.stations.length} stations chargées`);
+      if (!silent) toast(`📡 ${S.stations.length} stations chargées`);
       return;
     }
-    throw new Error('empty');
+    throw new Error('Aucun résultat');
   } catch (e) {
-    console.warn('API indisponible, données démo utilisées.', e);
+    console.warn('[FuelApp] API indisponible →', e.message);
     if (badge) { badge.textContent = '🔴 Démo'; badge.className = 'api-badge error'; }
     S.stations = JSON.parse(JSON.stringify(DEMO));
+    hideSkeleton();
     renderAll();
+    if (!silent) toast('⚠️ API indisponible — données démo');
   }
 }
 
-// ── Données démo fallback ─────────────────────────────────────────────
+/**
+ * Géocode une adresse / ville via Nominatim (OSM) et recharge les stations
+ * @param {string} query
+ */
+async function geocodeAndLoad(query) {
+  if (!query.trim()) return;
+  const badge = document.getElementById('apiBadge');
+  if (badge) { badge.textContent = '🟡 Recherche…'; badge.className = 'api-badge loading'; }
+  showSkeleton();
+  try {
+    const url = `${NOMINATIM}?q=${encodeURIComponent(query)}&countrycodes=fr&format=json&limit=1`;
+    const res = await fetch(url, { headers: { 'Accept-Language': 'fr' } });
+    const results = await res.json();
+    if (!results.length) {
+      hideSkeleton();
+      toast('📍 Ville introuvable — essayez autrement');
+      return;
+    }
+    const { lat, lon, display_name } = results[0];
+    S.pos = { lat: parseFloat(lat), lng: parseFloat(lon) };
+    renderUserPosition();
+    toast(`📍 ${display_name.split(',')[0]}`);
+    await fetchStationsAPI(S.pos.lat, S.pos.lng, S.radius, true);
+  } catch (e) {
+    hideSkeleton();
+    console.warn('[FuelApp] Géocodage échoué →', e);
+    toast('❌ Erreur de géocodage');
+  }
+}
+
+// ── Skeleton loading ───────────────────────────────────────────────────────
+function showSkeleton() {
+  const list = document.getElementById('stationList');
+  if (!list) return;
+  list.innerHTML = Array(4).fill(0).map(() => `
+    <div class="skeleton-card">
+      <div class="sk sk-name"></div>
+      <div class="sk sk-sub"></div>
+      <div class="sk sk-price"></div>
+    </div>`).join('');
+}
+
+function hideSkeleton() {
+  // renderStationList() écrasera le contenu — rien à faire ici
+}
+
+// ── Données démo fallback ──────────────────────────────────────────────────
 const DEMO = [
-  { id: 1, name: 'TotalEnergies Rivoli',    city: 'Paris',            lat: 48.855, lng:  2.357, addr: '12 Rue de Rivoli',         prices: { Gazole: 1.702, SP95: 1.829, 'SP95-E10': 1.781, SP98: 1.902, GPLc: 0.992, E85: 0.869 } },
-  { id: 2, name: 'E.Leclerc Frouard',       city: 'Frouard',          lat: 48.761, lng:  6.132, addr: 'Zone commerciale Grand Air', prices: { Gazole: 1.621, SP95: 1.748, 'SP95-E10': 1.709, SP98: 1.832, GPLc: 0.954, E85: 0.792 } },
-  { id: 3, name: 'Carrefour Mérignac',      city: 'Mérignac',         lat: 44.842, lng: -0.667, addr: 'Avenue de la Somme',        prices: { Gazole: 1.644, SP95: 1.765, 'SP95-E10': 1.721, SP98: 1.845, GPLc: 0.979, E85: 0.801 } },
-  { id: 4, name: 'Intermarché Brest',       city: 'Brest',            lat: 48.390, lng: -4.486, addr: 'Bld de Plymouth',           prices: { Gazole: 1.633, SP95: 1.759, 'SP95-E10': 1.714, SP98: 1.838, GPLc: 0.966, E85: 0.795 } },
-  { id: 5, name: 'Avia Nice Ouest',         city: 'Nice',             lat: 43.665, lng:  7.215, addr: 'Route de Grenoble',         prices: { Gazole: 1.712, SP95: 1.852, 'SP95-E10': 1.807, SP98: 1.931, GPLc: 1.005, E85: 0.884 } },
-  { id: 6, name: 'Auchan Noyelles',         city: 'Noyelles-Godault', lat: 50.417, lng:  2.995, addr: 'Centre commercial',         prices: { Gazole: 1.614, SP95: 1.739, 'SP95-E10': 1.698, SP98: 1.821, GPLc: 0.949, E85: 0.785 } }
+  { id: 1, name: 'TotalEnergies Rivoli',  city: 'Paris',           lat: 48.855, lng:  2.357, addr: '12 Rue de Rivoli',         prices: { Gazole: 1.702, SP95: 1.829, 'SP95-E10': 1.781, SP98: 1.902, GPLc: 0.992, E85: 0.869 } },
+  { id: 2, name: 'E.Leclerc Frouard',     city: 'Frouard',         lat: 48.761, lng:  6.132, addr: 'Zone commerciale Grand Air', prices: { Gazole: 1.621, SP95: 1.748, 'SP95-E10': 1.709, SP98: 1.832, GPLc: 0.954, E85: 0.792 } },
+  { id: 3, name: 'Carrefour Mérignac',    city: 'Mérignac',        lat: 44.842, lng: -0.667, addr: 'Avenue de la Somme',        prices: { Gazole: 1.644, SP95: 1.765, 'SP95-E10': 1.721, SP98: 1.845, GPLc: 0.979, E85: 0.801 } },
+  { id: 4, name: 'Intermarché Brest',     city: 'Brest',           lat: 48.390, lng: -4.486, addr: 'Bld de Plymouth',           prices: { Gazole: 1.633, SP95: 1.759, 'SP95-E10': 1.714, SP98: 1.838, GPLc: 0.966, E85: 0.795 } },
+  { id: 5, name: 'Avia Nice Ouest',       city: 'Nice',            lat: 43.665, lng:  7.215, addr: 'Route de Grenoble',         prices: { Gazole: 1.712, SP95: 1.852, 'SP95-E10': 1.807, SP98: 1.931, GPLc: 1.005, E85: 0.884 } },
+  { id: 6, name: 'Auchan Noyelles',       city: 'Noyelles-Godault',lat: 50.417, lng:  2.995, addr: 'Centre commercial',         prices: { Gazole: 1.614, SP95: 1.739, 'SP95-E10': 1.698, SP98: 1.821, GPLc: 0.949, E85: 0.785 } }
 ];
 
-// ── État global ───────────────────────────────────────────────────────
+// ── État global ────────────────────────────────────────────────────────────
 const S = {
-  user: null,
-  fuel: 'SP95-E10',
+  user:         null,
+  fuel:         'SP95-E10',
   statusFilter: 'all',
-  pos: { lat: 46.6, lng: 1.88 },
-  radius: 10,
-  stations: JSON.parse(JSON.stringify(DEMO)),
-  comments: [],
-  proposals: [],
-  activity: [],
-  selId: null,
-  map: null,
+  pos:          { lat: 46.6, lng: 1.88 },
+  radius:       50,
+  stations:     JSON.parse(JSON.stringify(DEMO)),
+  comments:     [],
+  proposals:    [],
+  activity:     [],
+  selId:        null,
+  map:          null,
   clusterGroup: null,
-  markers: [],
-  userDot: null,
-  watchId: null
+  markers:      [],
+  userDot:      null,
+  watchId:      null
 };
 
-// ── Utilitaires ───────────────────────────────────────────────────────
-const toast = (m, d = 2200) => {
+// ── Utilitaires ────────────────────────────────────────────────────────────
+const toast = (m, d = 2600) => {
   const t = document.getElementById('toast');
   if (!t) return;
   t.textContent = m;
@@ -104,19 +170,15 @@ const km = (a, b, c, d) => {
   return +(2 * R * Math.atan2(Math.sqrt(z), Math.sqrt(1 - z))).toFixed(1);
 };
 
-// ── Icônes carte ──────────────────────────────────────────────────────
+// ── Icônes carte ───────────────────────────────────────────────────────────
 function userIcon() {
   return L.divIcon({
     className: 'location-marker',
     html: '<div class="location-dot"></div>',
-    iconSize: [16, 16],
-    iconAnchor: [8, 8]
+    iconSize: [16, 16], iconAnchor: [8, 8]
   });
 }
 
-/**
- * Marker avec prix affiché directement (style AlertFuel)
- */
 function stationIcon(price, color, isBest = false) {
   return L.divIcon({
     html: `<div class="map-pin${isBest ? ' map-pin--best' : ''}" style="--pin-color:${color}">
@@ -124,29 +186,24 @@ function stationIcon(price, color, isBest = false) {
       <span class="pin-unit">€</span>
     </div>`,
     className: '',
-    iconSize: [58, 30],
-    iconAnchor: [29, 30],
-    popupAnchor: [0, -34]
+    iconSize: [58, 30], iconAnchor: [29, 30], popupAnchor: [0, -34]
   });
 }
 
-// ── Filtrage ──────────────────────────────────────────────────────────
+// ── Filtrage ───────────────────────────────────────────────────────────────
 function filtered() {
   const f = S.fuel;
   const items = S.stations.filter(s => {
     if (!s.prices[f]) return false;
     if (S.radius) {
-      const d = km(S.pos.lat, S.pos.lng, s.lat, s.lng);
-      if (d > S.radius) return false;
+      if (km(S.pos.lat, S.pos.lng, s.lat, s.lng) > S.radius) return false;
     }
     return true;
   }).sort((a, b) => a.prices[f] - b.prices[f]);
 
-  // Filtre statut (moins cher / moyen / plus cher)
   if (S.statusFilter !== 'all' && items.length > 1) {
     const prices = items.map(s => s.prices[f]);
-    const mn = Math.min(...prices);
-    const mx = Math.max(...prices);
+    const mn = Math.min(...prices), mx = Math.max(...prices);
     const third = (mx - mn) / 3;
     return items.filter(s => {
       const p = s.prices[f];
@@ -159,7 +216,7 @@ function filtered() {
   return items;
 }
 
-// ── Carte ─────────────────────────────────────────────────────────────
+// ── Carte ──────────────────────────────────────────────────────────────────
 function ensureMap() {
   if (!S.map) {
     S.map = L.map('map').setView([46.6, 1.88], 6);
@@ -167,19 +224,14 @@ function ensureMap() {
       maxZoom: 19,
       attribution: '© <a href="https://openstreetmap.org">OpenStreetMap</a>'
     }).addTo(S.map);
-    // Groupe de clustering
     S.clusterGroup = L.markerClusterGroup({
       maxClusterRadius: 50,
       spiderfyOnMaxZoom: true,
       showCoverageOnHover: false,
-      iconCreateFunction: cluster => {
-        const count = cluster.getChildCount();
-        return L.divIcon({
-          html: `<div class="cluster-icon">${count}</div>`,
-          className: '',
-          iconSize: [40, 40]
-        });
-      }
+      iconCreateFunction: cluster => L.divIcon({
+        html: `<div class="cluster-icon">${cluster.getChildCount()}</div>`,
+        className: '', iconSize: [40, 40]
+      })
     });
     S.map.addLayer(S.clusterGroup);
   }
@@ -196,9 +248,14 @@ function renderMap() {
 
   items.forEach(st => {
     const price = st.prices[S.fuel];
-    const isBest = price === bestPrice;
-    const mk = L.marker([st.lat, st.lng], { icon: stationIcon(price, FC[S.fuel] || '#0b7f88', isBest) });
-    mk.bindPopup(`<strong>${st.name}</strong><br>${st.city}<br><b style="color:${FC[S.fuel]}">${price ? price.toFixed(3) + ' €/L' : 'N/A'}</b><br><a href="https://maps.google.com/?q=${st.lat},${st.lng}" target="_blank" rel="noopener" style="color:#0b7f88;font-size:.85rem">🧭 Itinéraire</a>`);
+    const mk = L.marker([st.lat, st.lng], {
+      icon: stationIcon(price, FC[S.fuel] || '#0b7f88', price === bestPrice)
+    });
+    mk.bindPopup(
+      `<strong>${st.name}</strong><br>${st.city}<br>` +
+      `<b style="color:${FC[S.fuel]}">${price ? price.toFixed(3) + ' €/L' : 'N/A'}</b><br>` +
+      `<a href="https://maps.google.com/?q=${st.lat},${st.lng}" target="_blank" rel="noopener" style="color:#0b7f88;font-size:.85rem">🧭 Itinéraire</a>`
+    );
     mk.on('click', () => { S.selId = st.id; renderDetail(); expandBottomSheet(); });
     S.clusterGroup.addLayer(mk);
     S.markers.push(mk);
@@ -214,19 +271,15 @@ function renderUserPosition() {
   S.map.flyTo([S.pos.lat, S.pos.lng], 13, { animate: true, duration: 1.5 });
 }
 
-// ── Fiche détail station ──────────────────────────────────────────────
+// ── Fiche détail ───────────────────────────────────────────────────────────
 function renderDetail() {
-  const st = S.stations.find(s => s.id === S.selId);
+  const st  = S.stations.find(s => s.id === S.selId);
   const box = document.getElementById('stationDetails');
   if (!box) return;
-  if (!st) {
-    box.innerHTML = '';
-    return;
-  }
+  if (!st) { box.innerHTML = ''; return; }
 
-  const vals = FUELS.map(f => st.prices[f]).filter(v => v);
-  const min = Math.min(...vals);
-  const max = Math.max(...vals);
+  const vals = FUELS.map(f => st.prices[f]).filter(Boolean);
+  const min  = Math.min(...vals), max = Math.max(...vals);
   const dist = km(S.pos.lat, S.pos.lng, st.lat, st.lng);
 
   let html = `
@@ -234,26 +287,23 @@ function renderDetail() {
     <div class="detail-header">
       <div>
         <div class="detail-name">${st.name}</div>
-        <div class="detail-sub">${st.city}${st.addr ? ` · ${st.addr}` : ''}</div>
-        <div class="detail-dist">📍 ${dist} km</div>
+        <div class="detail-sub">${st.city}${st.addr ? ' · ' + st.addr : ''}</div>
+        <div class="detail-dist">📍 ${dist} km${st.updated ? ' · màj ' + new Date(st.updated).toLocaleDateString('fr-FR') : ''}</div>
       </div>
-      <a href="https://maps.google.com/?q=${st.lat},${st.lng}" target="_blank" rel="noopener" class="btn btn-itinerary" title="Ouvrir dans Google Maps">
-        🧭 <span>Itinéraire</span>
-      </a>
+      <a href="https://maps.google.com/?q=${st.lat},${st.lng}" target="_blank" rel="noopener" class="btn btn-itinerary">🧭 <span>Itinéraire</span></a>
     </div>
     <div class="price-grid">`;
 
   FUELS.forEach(f => {
-    if (st.prices[f]) {
-      const cls = st.prices[f] === min ? 'best' : st.prices[f] === max ? 'worst' : '';
-      const pct = max > min ? Math.round(((st.prices[f] - min) / (max - min)) * 100) : 0;
-      html += `
+    if (!st.prices[f]) return;
+    const cls = st.prices[f] === min ? 'best' : st.prices[f] === max ? 'worst' : '';
+    const pct = max > min ? Math.round(((st.prices[f] - min) / (max - min)) * 100) : 0;
+    html += `
       <div class="price-chip ${cls}">
         <div class="f-name">${f}</div>
         <div class="f-val" style="color:${FC[f]}">${st.prices[f].toFixed(3)} €</div>
         <div class="f-bar"><div class="f-bar-fill" style="width:${100 - pct}%;background:${FC[f]}"></div></div>
       </div>`;
-    }
   });
 
   html += `</div>
@@ -267,36 +317,31 @@ function renderDetail() {
 }
 
 window.openProposalFor = function(stId) {
-  const st = S.stations.find(s => s.id === stId);
-  if (!st) return;
   const sel = document.getElementById('commentStation');
   if (sel) sel.value = stId;
   viewTransition('communityView');
   toast('Station pré-sélectionnée');
 };
 
-// ── Prix moyens dans les pills ────────────────────────────────────────
+// ── Prix moyens pills ──────────────────────────────────────────────────────
 function updatePillAverages() {
-  const items = S.stations.filter(s => {
-    if (!S.radius) return true;
-    return km(S.pos.lat, S.pos.lng, s.lat, s.lng) <= S.radius;
-  });
+  const items = S.stations.filter(s => !S.radius || km(S.pos.lat, S.pos.lng, s.lat, s.lng) <= S.radius);
   FUELS.forEach(f => {
-    const el = document.getElementById(`avg-${f}`);
+    const el   = document.getElementById(`avg-${f}`);
     if (!el) return;
     const vals = items.map(s => s.prices[f]).filter(Boolean);
     el.textContent = vals.length ? (vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(2) + '€' : '';
   });
 }
 
-// ── Liste des stations ────────────────────────────────────────────────
+// ── Liste des stations ─────────────────────────────────────────────────────
 function renderStationList() {
   const list = document.getElementById('stationList');
   if (!list) return;
 
-  const fuel = S.fuel;
+  const fuel  = S.fuel;
   const items = filtered();
-  const best = items.length ? Math.min(...items.map(s => s.prices[fuel])) : null;
+  const best  = items.length ? Math.min(...items.map(s => s.prices[fuel])) : null;
   const worst = items.length ? Math.max(...items.map(s => s.prices[fuel])) : null;
 
   const bestMini = document.getElementById('bestPriceMini');
@@ -304,13 +349,25 @@ function renderStationList() {
 
   updatePillAverages();
 
-  list.innerHTML = items.length ? items.map((st, i) => {
+  if (!items.length) {
+    list.innerHTML = `
+      <div class="empty">
+        <div style="font-size:2rem;margin-bottom:.5rem">⛽</div>
+        <h3>Aucune station trouvée</h3>
+        <p>Essayez d'augmenter le rayon ou de changer de carburant.</p>
+        <button class="btn btn-pri" style="margin-top:.75rem" onclick="openCitySearch()">🏙️ Chercher une ville</button>
+      </div>`;
+    return;
+  }
+
+  list.innerHTML = items.map((st, i) => {
     const price = st.prices[fuel];
     const klass = price === best ? 'good' : price === worst ? 'high' : 'mid';
-    const dist = km(S.pos.lat, S.pos.lng, st.lat, st.lng);
-    const pct = best !== null && worst !== null && worst > best
+    const dist  = km(S.pos.lat, S.pos.lng, st.lat, st.lng);
+    const pct   = best !== null && worst !== null && worst > best
       ? Math.round(((price - best) / (worst - best)) * 100) : 0;
-    return `<div class="station-item" data-id="${st.id}">
+    return `
+    <div class="station-item" data-id="${st.id}">
       <div class="station-top">
         <div class="station-left">
           <div class="station-num">${String(i + 1).padStart(2, '0')}</div>
@@ -328,10 +385,9 @@ function renderStationList() {
       <div class="station-actions">
         <span class="station-action">📍 ${dist} km</span>
         <a class="station-action" href="https://maps.google.com/?q=${st.lat},${st.lng}" target="_blank" rel="noopener">🧭 Itinéraire</a>
-        <span class="station-action">#${st.id}</span>
       </div>
     </div>`;
-  }).join('') : '<div class="empty"><h3>Aucune station</h3><p>Aucun résultat pour ces filtres.</p></div>';
+  }).join('');
 
   list.querySelectorAll('.station-item').forEach(el => {
     el.addEventListener('click', () => {
@@ -344,33 +400,27 @@ function renderStationList() {
   });
 }
 
-// ── Bottom sheet mobile ───────────────────────────────────────────────
+// ── Bottom sheet ───────────────────────────────────────────────────────────
 function expandBottomSheet() {
   const panel = document.getElementById('stationPanel');
-  if (panel && window.innerWidth <= 700) {
-    panel.classList.add('expanded');
-  }
+  if (panel && window.innerWidth <= 700) panel.classList.add('expanded');
 }
 
-// Drag handle pour bottom sheet
 function initDragHandle() {
   const handle = document.getElementById('dragHandle');
   const panel  = document.getElementById('stationPanel');
   if (!handle || !panel) return;
   let startY = 0;
-  handle.addEventListener('pointerdown', e => {
-    startY = e.clientY;
-    handle.setPointerCapture(e.pointerId);
-  });
+  handle.addEventListener('pointerdown', e => { startY = e.clientY; handle.setPointerCapture(e.pointerId); });
   handle.addEventListener('pointermove', e => {
     if (!e.buttons) return;
     const dy = e.clientY - startY;
     if (dy < -30) panel.classList.add('expanded');
-    if (dy > 30)  panel.classList.remove('expanded');
+    if (dy >  30) panel.classList.remove('expanded');
   });
 }
 
-// ── Rendu session ─────────────────────────────────────────────────────
+// ── Session ────────────────────────────────────────────────────────────────
 function renderSession() {
   const box = document.getElementById('sessionCard');
   if (!box) return;
@@ -384,10 +434,10 @@ function renderSession() {
     <div class="log-item" style="display:flex;justify-content:space-between"><span>Carburant</span><span class="fuel-chip ${FCLS[S.user.fuel]}">${S.user.fuel}</span></div>`;
 }
 
-// ── Rendu admin ───────────────────────────────────────────────────────
+// ── Admin ──────────────────────────────────────────────────────────────────
 function renderAdmin() {
   const q = [
-    ...S.comments.filter(c => c.status === 'pending').map(c => ({ type: 'comment', ...c })),
+    ...S.comments.filter(c => c.status === 'pending').map(c => ({ type: 'comment',  ...c })),
     ...S.proposals.filter(p => p.status === 'pending').map(p => ({ type: 'proposal', ...p }))
   ].sort((a, b) => b.at - a.at);
 
@@ -398,7 +448,7 @@ function renderAdmin() {
 
   const queue = document.getElementById('adminQueueFull');
   if (queue) {
-    const html = q.map(item => {
+    queue.innerHTML = q.map(item => {
       const st = S.stations.find(s => s.id === item.stId);
       return `<div class="queue-item">
         <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:.5rem">
@@ -408,30 +458,34 @@ function renderAdmin() {
         <div style="font-weight:800;font-size:.92rem">${st?.name || 'Station'} — ${st?.city || ''}</div>
         <div style="font-size:.78rem;color:var(--tx2);margin:.2rem 0 .55rem">Par <b>${item.author}</b></div>
         <div style="background:var(--bg);border:1px solid var(--bor);border-radius:.9rem;padding:.65rem .75rem;font-size:.9rem;line-height:1.45;margin-bottom:.55rem">
-          ${item.type === 'comment' ? item.text : `<span class="fuel-chip ${FCLS[item.fuel]}">${item.fuel}</span> → <strong style="color:var(--ok)">${item.price.toFixed(3)} €/L</strong><div style="margin-top:.35rem;color:var(--tx1);font-size:.8rem">${item.reason}</div>`}
+          ${item.type === 'comment' ? item.text
+            : `<span class="fuel-chip ${FCLS[item.fuel]}">${item.fuel}</span> → <strong style="color:var(--ok)">${item.price.toFixed(3)} €/L</strong><div style="margin-top:.35rem;color:var(--tx1);font-size:.8rem">${item.reason}</div>`
+          }
         </div>
         <div style="display:flex;gap:.5rem;margin-top:.75rem;flex-wrap:wrap">
           <button class="btn btn-pri" style="padding:.55rem .85rem" onclick="approve('${item.type}',${item.id})">✓ Approuver</button>
           <button class="btn btn-danger" style="padding:.55rem .85rem" onclick="reject('${item.type}',${item.id})">✕ Refuser</button>
         </div>
       </div>`;
-    }).join('');
-    queue.innerHTML = html || '<div class="empty"><h3>File vide</h3><p>Aucune contribution en attente.</p></div>';
+    }).join('') || '<div class="empty"><h3>File vide</h3><p>Aucune contribution en attente.</p></div>';
   }
 
   const log = document.getElementById('activityLog');
   if (log) {
-    log.innerHTML = S.activity.map(x => `<div class="log-item" style="display:flex;justify-content:space-between;gap:.75rem"><div>${x.msg}</div><div style="color:var(--tx2);font-size:.72rem;white-space:nowrap">${x.at}</div></div>`).join('') || '<div class="empty"><h3>Aucune activité</h3></div>';
+    log.innerHTML = S.activity.map(x =>
+      `<div class="log-item" style="display:flex;justify-content:space-between;gap:.75rem">
+        <div>${x.msg}</div>
+        <div style="color:var(--tx2);font-size:.72rem;white-space:nowrap">${x.at}</div>
+      </div>`
+    ).join('') || '<div class="empty"><h3>Aucune activité</h3></div>';
   }
 }
 
 function hydrateSelects() {
-  const f  = FUELS.map(x => `<option value="${x}">${x}</option>`).join('');
   const el = document.getElementById('profileFuelSelect');
-  if (el) { el.innerHTML = f; el.value = S.fuel; }
-  const st = S.stations.map(s => `<option value="${s.id}">${s.name} — ${s.city}</option>`).join('');
-  const c  = document.getElementById('commentStation');
-  if (c) c.innerHTML = st;
+  if (el) { el.innerHTML = FUELS.map(x => `<option value="${x}">${x}</option>`).join(''); el.value = S.fuel; }
+  const c = document.getElementById('commentStation');
+  if (c) c.innerHTML = S.stations.map(s => `<option value="${s.id}">${s.name} — ${s.city}</option>`).join('');
 }
 
 function renderAll() {
@@ -443,42 +497,38 @@ function renderAll() {
   renderStationList();
 }
 
-// ── Approve / Reject ──────────────────────────────────────────────────
+// ── Approve / Reject ───────────────────────────────────────────────────────
 function approve(type, id) {
   const c = S.comments.find(x => x.id === id);
   const p = S.proposals.find(x => x.id === id);
-  if (type === 'comment' && c) c.status = 'approved';
+  if (type === 'comment'  && c) c.status = 'approved';
   if (type === 'proposal' && p) {
     p.status = 'approved';
     const st = S.stations.find(s => s.id === p.stId);
     if (st) st.prices[p.fuel] = p.price;
   }
   S.activity.unshift({ id: Date.now(), msg: `✅ ${type === 'comment' ? 'Commentaire' : 'Prix'} approuvé`, at: now() });
-  renderAll();
-  toast('Approuvé ✓');
+  renderAll(); toast('Approuvé ✓');
 }
 
 function reject(type, id) {
   const c = S.comments.find(x => x.id === id);
   const p = S.proposals.find(x => x.id === id);
-  if (type === 'comment' && c) c.status = 'rejected';
+  if (type === 'comment'  && c) c.status = 'rejected';
   if (type === 'proposal' && p) p.status = 'rejected';
   S.activity.unshift({ id: Date.now(), msg: `❌ ${type === 'comment' ? 'Commentaire' : 'Correction'} refusé`, at: now() });
-  renderAll();
-  toast('Refusé ✗');
+  renderAll(); toast('Refusé ✗');
 }
 
 window.approve = approve;
 window.reject  = reject;
 
-// ── Navigation avec View Transitions API ─────────────────────────────
+// ── Navigation View Transitions ────────────────────────────────────────────
 function viewTransition(id) {
   const doSwitch = () => {
     document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
-    const el = document.getElementById(id);
-    if (el) el.classList.add('active');
+    document.getElementById(id)?.classList.add('active');
     document.querySelectorAll('[data-view]').forEach(b => b.classList.toggle('active', b.dataset.view === id));
-
     const mapPanel   = document.getElementById('mapPanel');
     const adminPanel = document.getElementById('adminPanel');
     if (id === 'adminView') {
@@ -491,47 +541,52 @@ function viewTransition(id) {
     }
     if (id === 'mapView' && S.map) setTimeout(() => S.map.invalidateSize(), 120);
   };
-
-  if (document.startViewTransition) {
-    document.startViewTransition(doSwitch);
-  } else {
-    doSwitch();
-  }
+  document.startViewTransition ? document.startViewTransition(doSwitch) : doSwitch();
 }
 window.view = viewTransition;
 
-// ── Listeners navigation ──────────────────────────────────────────────
-document.querySelectorAll('[data-view]').forEach(b => b.addEventListener('click', () => viewTransition(b.dataset.view)));
+// ── Helper : ouvrir la recherche ville depuis l'empty state ────────────────
+window.openCitySearch = function() {
+  const btn    = document.getElementById('cityBtn');
+  const search = document.getElementById('citySearch');
+  if (btn)    btn.classList.add('active');
+  if (search) search.style.display = 'block';
+  setTimeout(() => document.getElementById('cityInput')?.focus(), 30);
+};
 
-// Ville
+// ── Listeners ─────────────────────────────────────────────────────────────
+document.querySelectorAll('[data-view]').forEach(b =>
+  b.addEventListener('click', () => viewTransition(b.dataset.view))
+);
+
+// Bouton Ville
 const cityBtn    = document.getElementById('cityBtn');
 const citySearch = document.getElementById('citySearch');
 if (cityBtn && citySearch) {
   cityBtn.addEventListener('click', () => {
     cityBtn.classList.toggle('active');
     citySearch.style.display = citySearch.style.display === 'none' ? 'block' : 'none';
-    const input = document.getElementById('cityInput');
-    if (citySearch.style.display === 'block' && input) setTimeout(() => input.focus(), 20);
+    if (citySearch.style.display === 'block')
+      setTimeout(() => document.getElementById('cityInput')?.focus(), 20);
   });
 }
 
+// Champ de recherche ville — géocodage Nominatim avec debounce
+let geocodeTimer = null;
 const cityInput = document.getElementById('cityInput');
 if (cityInput) {
-  cityInput.addEventListener('input', () => {
-    const q = cityInput.value.toLowerCase().trim();
-    if (!q) { renderMap(); renderStationList(); return; }
-    const station = S.stations.find(s => `${s.name} ${s.city} ${s.addr || ''}`.toLowerCase().includes(q));
-    if (station) {
-      S.selId = station.id;
-      renderDetail();
-      S.pos = { lat: station.lat, lng: station.lng };
-      renderUserPosition();
-      renderMap();
-      renderStationList();
-    } else {
-      renderMap();
-      renderStationList();
+  cityInput.addEventListener('keydown', e => {
+    if (e.key === 'Enter') {
+      clearTimeout(geocodeTimer);
+      geocodeAndLoad(cityInput.value);
     }
+  });
+  cityInput.addEventListener('input', () => {
+    const q = cityInput.value.trim();
+    clearTimeout(geocodeTimer);
+    if (q.length < 3) return;
+    // Debounce 600ms pour ne pas spammer Nominatim
+    geocodeTimer = setTimeout(() => geocodeAndLoad(q), 600);
   });
 }
 
@@ -555,50 +610,55 @@ if (radiusRange && radiusVal) {
   });
 }
 
-// Géolocalisation avec watchPosition
+// Géolocalisation watchPosition
 const locateBtn = document.getElementById('locateBtn');
 if (locateBtn) {
   locateBtn.addEventListener('click', () => {
-    if (!navigator.geolocation) return toast('Géolocalisation indisponible.');
+    if (!navigator.geolocation) return toast('⚠️ Géolocalisation indisponible sur cet appareil.');
     if (S.watchId) navigator.geolocation.clearWatch(S.watchId);
+    toast('📍 Localisation en cours…');
     S.watchId = navigator.geolocation.watchPosition(
       pos => {
         S.pos = { lat: pos.coords.latitude, lng: pos.coords.longitude };
         renderUserPosition();
-        renderMap();
-        renderStationList();
-        // Charge l'API avec la vraie position
-        fetchStationsAPI(S.pos.lat, S.pos.lng, S.radius);
+        fetchStationsAPI(S.pos.lat, S.pos.lng, S.radius, true);
       },
-      () => toast('Position refusée'),
+      err => {
+        // Empty state géoloc refusée
+        const list = document.getElementById('stationList');
+        if (list) list.innerHTML = `
+          <div class="empty">
+            <div style="font-size:2rem;margin-bottom:.5rem">📵</div>
+            <h3>Localisation refusée</h3>
+            <p>Autorisez la géolocalisation dans les paramètres de votre navigateur, ou recherchez une ville manuellement.</p>
+            <button class="btn btn-pri" style="margin-top:.75rem" onclick="openCitySearch()">🏙️ Chercher une ville</button>
+          </div>`;
+        toast('📵 Position refusée — entrez une ville manuellement');
+      },
       { enableHighAccuracy: true, timeout: 10000, maximumAge: 30000 }
     );
-    toast('📍 Localisation active…');
   });
 }
 
 // Pills carburant
-document.querySelectorAll('.fuel-pill').forEach(btn => {
+document.querySelectorAll('.fuel-pill').forEach(btn =>
   btn.addEventListener('click', () => {
     document.querySelectorAll('.fuel-pill').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
     S.fuel = btn.dataset.fuel;
-    renderMap();
-    renderDetail();
-    renderStationList();
-  });
-});
+    renderMap(); renderDetail(); renderStationList();
+  })
+);
 
 // Pills statut
-document.querySelectorAll('.status-pill').forEach(btn => {
+document.querySelectorAll('.status-pill').forEach(btn =>
   btn.addEventListener('click', () => {
     document.querySelectorAll('.status-pill').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
     S.statusFilter = btn.dataset.status;
-    renderMap();
-    renderStationList();
-  });
-});
+    renderMap(); renderStationList();
+  })
+);
 
 // Formulaire compte
 const registerForm = document.getElementById('registerForm');
@@ -620,17 +680,13 @@ if (commentForm) {
   commentForm.addEventListener('submit', e => {
     e.preventDefault();
     if (!S.user) return toast('Créez un compte d\'abord.');
-    const txt  = document.getElementById('commentText')?.value.trim();
-    if (!txt)   return toast('Ajoutez un commentaire.');
+    const txt = document.getElementById('commentText')?.value.trim();
+    if (!txt)  return toast('Ajoutez un commentaire.');
     const file = document.getElementById('commentPhoto')?.files[0];
     S.comments.unshift({
-      id:     Date.now(),
-      stId:   +document.getElementById('commentStation').value,
-      author: S.user.name,
-      text:   txt,
-      status: 'pending',
-      photo:  file ? file.name : '',
-      at:     Date.now()
+      id: Date.now(), stId: +document.getElementById('commentStation').value,
+      author: S.user.name, text: txt, status: 'pending',
+      photo: file ? file.name : '', at: Date.now()
     });
     e.target.reset();
     hidePreview('comment');
@@ -642,48 +698,39 @@ if (commentForm) {
 
 function preview(file, input) {
   const wrap = document.getElementById(input + 'Preview');
-  if (!wrap) return;
-  if (!file) { wrap.style.display = 'none'; return; }
+  if (!wrap || !file) { if (wrap) wrap.style.display = 'none'; return; }
   const img  = document.getElementById(input + 'PreviewImg');
   const name = document.getElementById(input + 'PreviewName');
   const size = document.getElementById(input + 'PreviewSize');
-  if (img)  img.src = URL.createObjectURL(file);
+  if (img)  img.src        = URL.createObjectURL(file);
   if (name) name.textContent = file.name;
   if (size) size.textContent = (file.size / 1024 / 1024).toFixed(2) + ' MB';
   wrap.style.display = 'flex';
 }
-
 function hidePreview(input) {
   const wrap = document.getElementById(input + 'Preview');
   if (wrap) wrap.style.display = 'none';
 }
-
 const commentPhoto = document.getElementById('commentPhoto');
-if (commentPhoto) {
-  commentPhoto.addEventListener('change', e => preview(e.target.files[0], 'comment'));
-}
+if (commentPhoto) commentPhoto.addEventListener('change', e => preview(e.target.files[0], 'comment'));
 
 // Bouton Démo
 const seedBtn = document.getElementById('seedBtn');
 if (seedBtn) {
   seedBtn.addEventListener('click', () => {
     S.stations = JSON.parse(JSON.stringify(DEMO));
-    S.comments = [
+    S.comments  = [
       { id: 1, stId: 2, author: 'Lucas', text: 'Prix conformes ce matin.', status: 'approved', at: Date.now() - 3e5 },
       { id: 2, stId: 1, author: 'Nora',  text: 'Beaucoup de monde mais prix corrects.', status: 'pending', at: Date.now() - 1e5 }
     ];
-    S.proposals = [
-      { id: 1, stId: 6, fuel: 'SP95-E10', price: 1.689, reason: 'Photo ticket 18h20.', author: 'Mathis', photo: 'ticket.jpg', status: 'pending', at: Date.now() }
-    ];
-    S.activity = [{ id: 1, msg: '🎭 Mode démo activé', at: now() }];
-    renderAll();
-    toast('🎭 Démo activée');
+    S.proposals = [{ id: 1, stId: 6, fuel: 'SP95-E10', price: 1.689, reason: 'Photo ticket 18h20.', author: 'Mathis', photo: 'ticket.jpg', status: 'pending', at: Date.now() }];
+    S.activity  = [{ id: 1, msg: '🎭 Mode démo activé', at: now() }];
+    renderAll(); toast('🎭 Démo activée');
   });
 }
 
 // Thème
 const themeChk = document.getElementById('themeChk');
-
 function setTheme(dark) {
   document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
   if (themeChk) themeChk.checked = dark;
@@ -696,19 +743,19 @@ function setTheme(dark) {
   if (S.map) setTimeout(() => S.map.invalidateSize(), 120);
   localStorage.setItem('theme', dark ? 'dark' : 'light');
 }
-
 if (themeChk) themeChk.addEventListener('change', () => setTheme(themeChk.checked));
-
 const savedTheme  = localStorage.getItem('theme');
 const prefersDark = matchMedia('(prefers-color-scheme: dark)').matches;
 setTheme(savedTheme ? savedTheme === 'dark' : prefersDark);
 
-// ── Init ──────────────────────────────────────────────────────────────
+// ── Init ───────────────────────────────────────────────────────────────────
 function init() {
   initDragHandle();
   hydrateSelects();
   renderAll();
-  setTimeout(() => { if (S.map) S.map.invalidateSize(); }, 200);
+  setTimeout(() => S.map?.invalidateSize(), 200);
+  // P0 : charge les stations dès le démarrage (France entière, rayon 500km)
+  fetchStationsAPI(46.6, 1.88, 500);
 }
 
 document.addEventListener('DOMContentLoaded', init);
