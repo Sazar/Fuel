@@ -1,5 +1,6 @@
 /* =====================================================================
    FuelApp — app.js
+   Toast = badge persistant centré en haut de carte
    ===================================================================== */
 
 const FUELS = ['Gazole', 'SP95', 'SP95-E10', 'SP98', 'GPLc', 'E85'];
@@ -9,14 +10,39 @@ const FCLS  = { Gazole: 'fc-g', SP95: 'fc-95', 'SP95-E10': 'fc-e10', SP98: 'fc-9
 const API_BASE  = 'https://data.economie.gouv.fr/api/explore/v2.1/catalog/datasets/prix-des-carburants-en-france-flux-instantane-v2/records';
 const NOMINATIM = 'https://nominatim.openstreetmap.org/search';
 
-/** Badge persistant en haut de carte — seul indicateur de statut stations */
-function setMapBadge(state, text) {
+/**
+ * setMapBadge(state, text, revertAfterMs?)
+ * state : 'ok' | 'loading' | 'error' | 'info'
+ * revertAfterMs : si fourni, revient à l'état mémorisé après N ms
+ */
+let _badgeRevertTimer = null;
+let _lastStableText  = 'Chargement…';
+let _lastStableState = 'loading';
+
+function setMapBadge(state, text, revertAfterMs) {
   const badge = document.getElementById('mapStationBadge');
   const label = document.getElementById('mapStationCount');
   if (!badge || !label) return;
+
+  clearTimeout(_badgeRevertTimer);
   badge.className = 'map-station-badge' + (state !== 'ok' ? ' ' + state : '');
   label.textContent = text;
+
+  if (!revertAfterMs) {
+    // message stable — on le mémorise
+    _lastStableText  = text;
+    _lastStableState = state;
+  } else {
+    // message éphémère — on revient à l'état stable
+    _badgeRevertTimer = setTimeout(() => {
+      badge.className = 'map-station-badge' + (_lastStableState !== 'ok' ? ' ' + _lastStableState : '');
+      label.textContent = _lastStableText;
+    }, revertAfterMs);
+  }
 }
+
+/** Remplace toast() — s'affiche dans le badge, disparait après 2.6s */
+const toast = (msg) => setMapBadge('info', msg, 2600);
 
 function mapApiStation(r) {
   const geom = r.geom || {};
@@ -75,8 +101,9 @@ async function geocodeAndLoad(query) {
     const { lat, lon, display_name } = results[0];
     S.pos = { lat: parseFloat(lat), lng: parseFloat(lon) };
     renderUserPosition();
-    toast(`📍 ${display_name.split(',')[0]}`);
     await fetchStationsAPI(S.pos.lat, S.pos.lng, S.radius);
+    // Affiche le nom de la ville par-dessus le badge stable, 3s
+    setMapBadge('ok', `📍 ${display_name.split(',')[0]}`, 3000);
   } catch (e) {
     setMapBadge('error', 'Erreur géocodage');
   }
@@ -114,11 +141,6 @@ const S = {
 };
 
 // —— Utilitaires ——————————————————————————————————————————————————————
-const toast = (m, d=2600) => {
-  const t = document.getElementById('toast'); if(!t) return;
-  t.textContent=m; t.style.opacity=1; clearTimeout(t._x);
-  t._x = setTimeout(()=>t.style.opacity=0, d);
-};
 const now = () => new Date().toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'});
 const km = (a,b,c,d) => {
   const R=6371,x=(c-a)*Math.PI/180,y=(d-b)*Math.PI/180;
@@ -458,7 +480,7 @@ if(radiusRange&&radiusVal) radiusRange.addEventListener('input',()=>{S.radius=+r
 const locateBtn=document.getElementById('locateBtn');
 if(locateBtn){
   locateBtn.addEventListener('click',()=>{
-    if(!navigator.geolocation) return toast('⚠️ Géolocalisation indisponible.');
+    if(!navigator.geolocation) return setMapBadge('error','Géoloc indisponible');
     if(S.watchId) navigator.geolocation.clearWatch(S.watchId);
     setMapBadge('loading','Localisation…');
     S.watchId=navigator.geolocation.watchPosition(
