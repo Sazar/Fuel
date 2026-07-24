@@ -1,6 +1,12 @@
 /* =====================================================================
    FuelApp — app.js
-   Toast = badge persistant centré en haut de carte
+   Corrections bugs :
+   - Badge carte : #mapStationBadge + #mapStationCount correctement ciblés
+   - IDs normalisés en string (API renvoie des strings, DEMO aussi)
+   - Pagination API : récupère jusqu'à 300 stations via offset
+   - Debounce radiusRange : 120ms pour éviter le spam de rendu
+   - Suppression des onclick inline : délégation d'événements pour
+     approve, reject, openProposalFor
    ===================================================================== */
 
 const FUELS = ['Gazole', 'SP95', 'SP95-E10', 'SP98', 'GPLc', 'E85'];
@@ -9,12 +15,12 @@ const FCLS  = { Gazole: 'fc-g', SP95: 'fc-95', 'SP95-E10': 'fc-e10', SP98: 'fc-9
 
 const API_BASE  = 'https://data.economie.gouv.fr/api/explore/v2.1/catalog/datasets/prix-des-carburants-en-france-flux-instantane-v2/records';
 const NOMINATIM = 'https://nominatim.openstreetmap.org/search';
+const API_PAGE_SIZE = 100;
+const API_MAX_PAGES = 3; // max 300 stations
 
-/**
- * setMapBadge(state, text, revertAfterMs?)
- * state : 'ok' | 'loading' | 'error' | 'info'
- * revertAfterMs : si fourni, revient à l'état mémorisé après N ms
- */
+/* -----------------------------------------------------------------------
+   Badge carte — FIX : cible correctement #mapStationBadge / #mapStationCount
+   ----------------------------------------------------------------------- */
 let _badgeRevertTimer = null;
 let _lastStableText  = 'Chargement…';
 let _lastStableState = 'loading';
@@ -29,11 +35,9 @@ function setMapBadge(state, text, revertAfterMs) {
   label.textContent = text;
 
   if (!revertAfterMs) {
-    // message stable — on le mémorise
     _lastStableText  = text;
     _lastStableState = state;
   } else {
-    // message éphémère — on revient à l'état stable
     _badgeRevertTimer = setTimeout(() => {
       badge.className = 'map-station-badge' + (_lastStableState !== 'ok' ? ' ' + _lastStableState : '');
       label.textContent = _lastStableText;
@@ -41,13 +45,15 @@ function setMapBadge(state, text, revertAfterMs) {
   }
 }
 
-/** Remplace toast() — s'affiche dans le badge, disparait après 2.6s */
 const toast = (msg) => setMapBadge('info', msg, 2600);
 
+/* -----------------------------------------------------------------------
+   Mapping API — FIX : ID toujours normalisé en string
+   ----------------------------------------------------------------------- */
 function mapApiStation(r) {
   const geom = r.geom || {};
   return {
-    id:      r.id || r.id_station || String(Math.random()),
+    id:      String(r.id || r.id_station || Math.random()),
     name:    r.nom || r.Nom || 'Station',
     city:    r.ville || r.Ville || '',
     addr:    r.adresse || r.Adresse || '',
@@ -66,16 +72,33 @@ function mapApiStation(r) {
   };
 }
 
+/* -----------------------------------------------------------------------
+   Fetch avec pagination — FIX : récupère jusqu'à API_PAGE_SIZE * API_MAX_PAGES stations
+   ----------------------------------------------------------------------- */
 async function fetchStationsAPI(lat, lng, radius = 50) {
   setMapBadge('loading', 'Chargement…');
   showSkeleton();
   try {
-    const url = `${API_BASE}?where=distance(geom,geom'POINT(${lng} ${lat})',${radius}km)&limit=100&timezone=Europe%2FParis`;
-    const res = await fetch(url);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
-    if (data.results && data.results.length) {
-      S.stations = data.results.map(mapApiStation).filter(s => s.lat && s.lng);
+    const where = `distance(geom,geom'POINT(${lng} ${lat})',${radius}km)`;
+    let allResults = [];
+    let offset = 0;
+    let page = 0;
+
+    while (page < API_MAX_PAGES) {
+      const url = `${API_BASE}?where=${encodeURIComponent(where)}&limit=${API_PAGE_SIZE}&offset=${offset}&timezone=Europe%2FParis`;
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      const results = data.results || [];
+      allResults = allResults.concat(results);
+      // Arrêt si moins de résultats que la page size (dernière page)
+      if (results.length < API_PAGE_SIZE) break;
+      offset += API_PAGE_SIZE;
+      page++;
+    }
+
+    if (allResults.length) {
+      S.stations = allResults.map(mapApiStation).filter(s => s.lat && s.lng);
       setMapBadge('ok', `${S.stations.length} stations chargées`);
       renderAll();
       return;
@@ -102,14 +125,13 @@ async function geocodeAndLoad(query) {
     S.pos = { lat: parseFloat(lat), lng: parseFloat(lon) };
     renderUserPosition();
     await fetchStationsAPI(S.pos.lat, S.pos.lng, S.radius);
-    // Affiche le nom de la ville par-dessus le badge stable, 3s
     setMapBadge('ok', `📍 ${display_name.split(',')[0]}`, 3000);
   } catch (e) {
     setMapBadge('error', 'Erreur géocodage');
   }
 }
 
-// —— Skeleton —————————————————————————————————————————————————————————
+// —— Skeleton ————————————————————————————————————————————————————————
 function showSkeleton() {
   const list = document.getElementById('stationList');
   if (!list) return;
@@ -121,14 +143,14 @@ function showSkeleton() {
     </div>`).join('');
 }
 
-// —— Données démo ————————————————————————————————————————————————————
+// —— Données démo — FIX : IDs en string pour cohérence avec l'API ——
 const DEMO = [
-  { id:1, name:'TotalEnergies Rivoli', city:'Paris',           lat:48.855, lng: 2.357, addr:'12 Rue de Rivoli',   prices:{Gazole:1.702,SP95:1.829,'SP95-E10':1.781,SP98:1.902,GPLc:0.992,E85:0.869} },
-  { id:2, name:'E.Leclerc Frouard',   city:'Frouard',         lat:48.761, lng: 6.132, addr:'Zone commerciale',   prices:{Gazole:1.621,SP95:1.748,'SP95-E10':1.709,SP98:1.832,GPLc:0.954,E85:0.792} },
-  { id:3, name:'Carrefour Mérignac',  city:'Mérignac',        lat:44.842, lng:-0.667, addr:'Avenue de la Somme', prices:{Gazole:1.644,SP95:1.765,'SP95-E10':1.721,SP98:1.845,GPLc:0.979,E85:0.801} },
-  { id:4, name:'Intermarché Brest',   city:'Brest',           lat:48.390, lng:-4.486, addr:'Bld de Plymouth',    prices:{Gazole:1.633,SP95:1.759,'SP95-E10':1.714,SP98:1.838,GPLc:0.966,E85:0.795} },
-  { id:5, name:'Avia Nice Ouest',     city:'Nice',            lat:43.665, lng: 7.215, addr:'Route de Grenoble',  prices:{Gazole:1.712,SP95:1.852,'SP95-E10':1.807,SP98:1.931,GPLc:1.005,E85:0.884} },
-  { id:6, name:'Auchan Noyelles',     city:'Noyelles-Godault',lat:50.417, lng: 2.995, addr:'Centre commercial',  prices:{Gazole:1.614,SP95:1.739,'SP95-E10':1.698,SP98:1.821,GPLc:0.949,E85:0.785} }
+  { id:'demo-1', name:'TotalEnergies Rivoli', city:'Paris',           lat:48.855, lng: 2.357, addr:'12 Rue de Rivoli',   prices:{Gazole:1.702,SP95:1.829,'SP95-E10':1.781,SP98:1.902,GPLc:0.992,E85:0.869} },
+  { id:'demo-2', name:'E.Leclerc Frouard',   city:'Frouard',         lat:48.761, lng: 6.132, addr:'Zone commerciale',   prices:{Gazole:1.621,SP95:1.748,'SP95-E10':1.709,SP98:1.832,GPLc:0.954,E85:0.792} },
+  { id:'demo-3', name:'Carrefour Mérignac',  city:'Mérignac',        lat:44.842, lng:-0.667, addr:'Avenue de la Somme', prices:{Gazole:1.644,SP95:1.765,'SP95-E10':1.721,SP98:1.845,GPLc:0.979,E85:0.801} },
+  { id:'demo-4', name:'Intermarché Brest',   city:'Brest',           lat:48.390, lng:-4.486, addr:'Bld de Plymouth',    prices:{Gazole:1.633,SP95:1.759,'SP95-E10':1.714,SP98:1.838,GPLc:0.966,E85:0.795} },
+  { id:'demo-5', name:'Avia Nice Ouest',     city:'Nice',            lat:43.665, lng: 7.215, addr:'Route de Grenoble',  prices:{Gazole:1.712,SP95:1.852,'SP95-E10':1.807,SP98:1.931,GPLc:1.005,E85:0.884} },
+  { id:'demo-6', name:'Auchan Noyelles',     city:'Noyelles-Godault',lat:50.417, lng: 2.995, addr:'Centre commercial',  prices:{Gazole:1.614,SP95:1.739,'SP95-E10':1.698,SP98:1.821,GPLc:0.949,E85:0.785} }
 ];
 
 // —— État global ——————————————————————————————————————————————————————
@@ -211,7 +233,9 @@ function renderMap() {
     const price=st.prices[S.fuel];
     const mk=L.marker([st.lat,st.lng],{icon:stationIcon(price,FC[S.fuel]||'#0b7f88',price===bestPrice)});
     mk.bindPopup(`<strong>${st.name}</strong><br>${st.city}<br><b style="color:${FC[S.fuel]}">${price?price.toFixed(3)+' €/L':'N/A'}</b><br><a href="https://maps.google.com/?q=${st.lat},${st.lng}" target="_blank" rel="noopener" style="color:#0b7f88;font-size:.85rem">🧭 Itinéraire</a>`);
-    mk.on('click',()=>{S.selId=st.id;renderDetail();expandBottomSheet();});
+    // FIX : stocke l'id de la station sur le marker pour la délégation
+    mk._stationId = st.id;
+    mk.on('click',()=>{ S.selId = st.id; renderDetail(); expandBottomSheet(); });
     S.clusterGroup.addLayer(mk);
     S.markers.push(mk);
   });
@@ -225,7 +249,7 @@ function renderUserPosition() {
   S.map.flyTo([S.pos.lat,S.pos.lng],13,{animate:true,duration:1.5});
 }
 
-// —— Fiche détail ————————————————————————————————————————————————————
+// —— Fiche détail — FIX : plus d'onclick inline, data-attrs à la place ——
 function renderDetail() {
   const st=S.stations.find(s=>s.id===S.selId);
   const box=document.getElementById('stationDetails');
@@ -254,19 +278,44 @@ function renderDetail() {
       <div class="f-bar"><div class="f-bar-fill" style="width:${100-pct}%;background:${FC[f]}"></div></div>
     </div>`;
   });
+  // FIX : data-proposal-id à la place d'onclick inline
   html+=`</div><div class="detail-actions">
-    <button class="btn" onclick="openProposalFor(${st.id})">✏️ Corriger un prix</button>
-    <button class="btn" onclick="S.selId=null;renderDetail()">&times; Fermer</button>
+    <button class="btn" data-proposal-for="${st.id}">✏️ Corriger un prix</button>
+    <button class="btn" data-close-detail>✕ Fermer</button>
   </div></div>`;
   box.innerHTML=html;
 }
 
-window.openProposalFor=function(stId){
-  const sel=document.getElementById('commentStation');
-  if(sel) sel.value=stId;
-  viewTransition('communityView');
-  toast('Station pré-sélectionnée');
-};
+// —— Délégation pour les boutons de la fiche détail ——————————————————
+document.addEventListener('click', e => {
+  // Bouton "Corriger un prix"
+  const proposalBtn = e.target.closest('[data-proposal-for]');
+  if (proposalBtn) {
+    const stId = proposalBtn.dataset.proposalFor;
+    const sel = document.getElementById('commentStation');
+    if (sel) sel.value = stId;
+    viewTransition('communityView');
+    toast('Station pré-sélectionnée');
+    return;
+  }
+  // Bouton "Fermer" fiche
+  if (e.target.closest('[data-close-detail]')) {
+    S.selId = null;
+    renderDetail();
+    return;
+  }
+  // FIX : Boutons Approuver / Refuser via délégation (data-approve / data-reject)
+  const approveBtn = e.target.closest('[data-approve]');
+  if (approveBtn) {
+    approve(approveBtn.dataset.approve, approveBtn.dataset.id);
+    return;
+  }
+  const rejectBtn = e.target.closest('[data-reject]');
+  if (rejectBtn) {
+    reject(rejectBtn.dataset.reject, rejectBtn.dataset.id);
+    return;
+  }
+});
 
 // —— Prix moyens pills ————————————————————————————————————————————————
 function updatePillAverages() {
@@ -294,11 +343,12 @@ function renderStationList() {
       <div style="font-size:2rem;margin-bottom:.5rem">⛽</div>
       <h3>Aucune station trouvée</h3>
       <p>Augmentez le rayon ou changez de carburant.</p>
-      <button class="btn btn-pri" style="margin-top:.75rem" onclick="openCitySearch()">🏙️ Chercher une ville</button>
+      <button class="btn btn-pri" style="margin-top:.75rem" data-open-city-search>🏙️ Chercher une ville</button>
     </div>`;
     return;
   }
 
+  // FIX : data-id reste string, pas de parseInt
   list.innerHTML=items.map((st,i)=>{
     const price=st.prices[fuel];
     const klass=price===best?'good':price===worst?'high':'mid';
@@ -323,15 +373,21 @@ function renderStationList() {
     </div>`;
   }).join('');
 
+  // FIX : selId reste string, comparaison directe avec data-id
   list.querySelectorAll('.station-item').forEach(el=>{
     el.addEventListener('click',()=>{
-      S.selId=+el.dataset.id;
+      S.selId = el.dataset.id;
       renderDetail(); expandBottomSheet();
       const st=S.stations.find(s=>s.id===S.selId);
       if(st&&S.map) S.map.flyTo([st.lat,st.lng],15,{animate:true,duration:1});
     });
   });
 }
+
+// —— Délégation pour data-open-city-search ——————————————————————————
+document.addEventListener('click', e => {
+  if (e.target.closest('[data-open-city-search]')) openCitySearch();
+});
 
 // —— Bottom sheet ————————————————————————————————————————————————————
 function expandBottomSheet(){
@@ -362,7 +418,7 @@ function renderSession(){
     <div class="log-item" style="display:flex;justify-content:space-between"><span>Carburant</span><span class="fuel-chip ${FCLS[S.user.fuel]}">${S.user.fuel}</span></div>`;
 }
 
-// —— Admin ————————————————————————————————————————————————————————————
+// —— Admin — FIX : data-approve / data-reject à la place d'onclick inline ——
 function renderAdmin(){
   const q=[
     ...S.comments.filter(c=>c.status==='pending').map(c=>({type:'comment',...c})),
@@ -387,8 +443,8 @@ function renderAdmin(){
           ${item.type==='comment'?item.text:`<span class="fuel-chip ${FCLS[item.fuel]}">${item.fuel}</span> → <strong style="color:var(--ok)">${item.price.toFixed(3)} €/L</strong><div style="margin-top:.35rem;font-size:.8rem">${item.reason}</div>`}
         </div>
         <div style="display:flex;gap:.5rem;flex-wrap:wrap">
-          <button class="btn btn-pri" style="padding:.55rem .85rem" onclick="approve('${item.type}',${item.id})">✓ Approuver</button>
-          <button class="btn btn-danger" style="padding:.55rem .85rem" onclick="reject('${item.type}',${item.id})">✕ Refuser</button>
+          <button class="btn btn-pri" style="padding:.55rem .85rem" data-approve="${item.type}" data-id="${item.id}">✓ Approuver</button>
+          <button class="btn btn-danger" style="padding:.55rem .85rem" data-reject="${item.type}" data-id="${item.id}">✕ Refuser</button>
         </div>
       </div>`;
     }).join('')||'<div class="empty"><h3>File vide</h3></div>';
@@ -408,22 +464,26 @@ function renderAll(){
   hydrateSelects(); renderMap(); renderDetail(); renderSession(); renderAdmin(); renderStationList();
 }
 
-// —— Approve / Reject ————————————————————————————————————————————————
-function approve(type,id){
-  const c=S.comments.find(x=>x.id===id), p=S.proposals.find(x=>x.id===id);
+// —— Approve / Reject — FIX : appelés par délégation, plus en window.* ——
+function approve(type, id) {
+  // FIX : comparaison en string pour les ids
+  const sid = String(id);
+  const c=S.comments.find(x=>String(x.id)===sid);
+  const p=S.proposals.find(x=>String(x.id)===sid);
   if(type==='comment'&&c) c.status='approved';
   if(type==='proposal'&&p){p.status='approved';const st=S.stations.find(s=>s.id===p.stId);if(st) st.prices[p.fuel]=p.price;}
   S.activity.unshift({id:Date.now(),msg:`✅ ${type==='comment'?'Commentaire':'Prix'} approuvé`,at:now()});
   renderAll(); toast('Approuvé ✓');
 }
-function reject(type,id){
-  const c=S.comments.find(x=>x.id===id), p=S.proposals.find(x=>x.id===id);
+function reject(type, id) {
+  const sid = String(id);
+  const c=S.comments.find(x=>String(x.id)===sid);
+  const p=S.proposals.find(x=>String(x.id)===sid);
   if(type==='comment'&&c) c.status='rejected';
   if(type==='proposal'&&p) p.status='rejected';
   S.activity.unshift({id:Date.now(),msg:`❌ ${type==='comment'?'Commentaire':'Correction'} refusé`,at:now()});
   renderAll(); toast('Refusé ✗');
 }
-window.approve=approve; window.reject=reject;
 
 // —— Navigation ———————————————————————————————————————————————————————
 function viewTransition(id){
@@ -439,14 +499,15 @@ function viewTransition(id){
   };
   document.startViewTransition?document.startViewTransition(doSwitch):doSwitch();
 }
-window.view=viewTransition;
 
-window.openCitySearch=function(){
+window.openCitySearch = function openCitySearch(){
   const btn=document.getElementById('cityBtn'), search=document.getElementById('citySearch');
   if(btn) btn.classList.add('active');
   if(search) search.style.display='block';
   setTimeout(()=>document.getElementById('cityInput')?.focus(),30);
 };
+// Alias local sans window pour usage interne
+const openCitySearch = window.openCitySearch;
 
 // —— Listeners ————————————————————————————————————————————————————————
 document.querySelectorAll('[data-view]').forEach(b=>b.addEventListener('click',()=>viewTransition(b.dataset.view)));
@@ -474,16 +535,21 @@ if(cityInput){
 const aroundBtn=document.getElementById('aroundMeBtn'), aroundMenu=document.getElementById('aroundMenu');
 if(aroundBtn&&aroundMenu) aroundBtn.addEventListener('click',()=>{aroundMenu.style.display=aroundMenu.style.display==='block'?'none':'block';});
 
+// FIX : debounce 120ms sur le slider de rayon pour éviter le spam de rendu
+let _radiusDebounce = null;
 const radiusRange=document.getElementById('radiusRange'), radiusVal=document.getElementById('radiusVal');
-if(radiusRange&&radiusVal) radiusRange.addEventListener('input',()=>{S.radius=+radiusRange.value;radiusVal.textContent=S.radius;renderMap();renderStationList();});
+if(radiusRange&&radiusVal) radiusRange.addEventListener('input',()=>{
+  S.radius=+radiusRange.value;
+  radiusVal.textContent=S.radius;
+  clearTimeout(_radiusDebounce);
+  _radiusDebounce = setTimeout(()=>{ renderMap(); renderStationList(); }, 120);
+});
 
 const locateBtn = document.getElementById('locateBtn');
 if (locateBtn) {
   locateBtn.addEventListener('click', () => {
     if (!navigator.geolocation) return setMapBadge('error', 'Géoloc indisponible');
-
     setMapBadge('loading', 'Localisation…');
-
     navigator.geolocation.getCurrentPosition(
       pos => {
         S.pos = { lat: pos.coords.latitude, lng: pos.coords.longitude };
@@ -497,7 +563,7 @@ if (locateBtn) {
             <div style="font-size:2rem;margin-bottom:.5rem">📵</div>
             <h3>Localisation refusée</h3>
             <p>Autorisez la géolocalisation ou recherchez une ville.</p>
-            <button class="btn btn-pri" style="margin-top:.75rem" onclick="openCitySearch()">🏙️ Chercher une ville</button>
+            <button class="btn btn-pri" style="margin-top:.75rem" data-open-city-search>🏙️ Chercher une ville</button>
           </div>`;
         }
         setMapBadge('error', 'Position refusée');
@@ -535,7 +601,7 @@ if(commentForm) commentForm.addEventListener('submit',e=>{
   const txt=document.getElementById('commentText')?.value.trim();
   if(!txt) return toast('Ajoutez un commentaire.');
   const file=document.getElementById('commentPhoto')?.files[0];
-  S.comments.unshift({id:Date.now(),stId:+document.getElementById('commentStation').value,author:S.user.name,text:txt,status:'pending',photo:file?file.name:'',at:Date.now()});
+  S.comments.unshift({id:Date.now(),stId:document.getElementById('commentStation').value,author:S.user.name,text:txt,status:'pending',photo:file?file.name:'',at:Date.now()});
   e.target.reset(); hidePreview('comment');
   S.activity.unshift({id:Date.now(),msg:`💬 Commentaire soumis par ${S.user.name}`,at:now()});
   renderAll(); toast('Envoyé — en attente de modération');
@@ -556,9 +622,14 @@ if(commentPhoto) commentPhoto.addEventListener('change',e=>preview(e.target.file
 const seedBtn=document.getElementById('seedBtn');
 if(seedBtn) seedBtn.addEventListener('click',()=>{
   S.stations=JSON.parse(JSON.stringify(DEMO));
-  S.comments=[{id:1,stId:2,author:'Lucas',text:'Prix conformes ce matin.',status:'approved',at:Date.now()-3e5},{id:2,stId:1,author:'Nora',text:'Beaucoup de monde.',status:'pending',at:Date.now()-1e5}];
-  S.proposals=[{id:1,stId:6,fuel:'SP95-E10',price:1.689,reason:'Photo ticket.',author:'Mathis',photo:'ticket.jpg',status:'pending',at:Date.now()}];
-  S.activity=[{id:1,msg:'🎭 Mode démo activé',at:now()}];
+  S.comments=[
+    {id:'c1',stId:'demo-2',author:'Lucas',text:'Prix conformes ce matin.',status:'approved',at:Date.now()-3e5},
+    {id:'c2',stId:'demo-1',author:'Nora',text:'Beaucoup de monde.',status:'pending',at:Date.now()-1e5}
+  ];
+  S.proposals=[
+    {id:'p1',stId:'demo-6',fuel:'SP95-E10',price:1.689,reason:'Photo ticket.',author:'Mathis',photo:'ticket.jpg',status:'pending',at:Date.now()}
+  ];
+  S.activity=[{id:'a1',msg:'🎭 Mode démo activé',at:now()}];
   setMapBadge('ok',`${S.stations.length} stations démo`);
   renderAll(); toast('🎭 Démo activée');
 });

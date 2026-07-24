@@ -156,8 +156,11 @@
     <section class="map-panel" id="mapPanel">
       <div id="map"></div>
 
-      <!-- Pilule persistante en haut au centre de la carte -->
-      <div id="toast" class="toast-badge">Chargement…</div>
+      <!-- FIX: badge renommé #mapStationBadge avec .msb-dot pour correspondre à setMapBadge() -->
+      <div id="mapStationBadge" class="map-station-badge">
+        <span class="msb-dot"></span>
+        <span id="mapStationCount">Chargement…</span>
+      </div>
 
       <button class="map-close-detail" id="closeDetail" style="display:none" title="Fermer la fiche">&times;</button>
     </section>
